@@ -55,6 +55,31 @@ npm run dev
 3. 部署完成後，先在 Supabase 上完成上方「資料庫設定」步驟，再開發環境建立第一個管理員帳號並用該帳號登入正式站台的 `/admin/login` 確認可以登入（管理員帳號建立於資料庫，不受 Vercel 部署環境影響）。
 4. 到 `/admin/payment-settings` 設定正式匯款帳戶並啟用。
 
+## 正式站與測試站分流
+
+專案用兩個 Git branch 對應兩個環境，彼此使用**各自獨立的 Supabase 專案**，測試不會動到正式資料：
+
+| Branch | Vercel 環境 | Supabase 專案 | 用途 |
+| --- | --- | --- | --- |
+| `main` | Production（正式網址） | 正式 Supabase 專案 | 給客人正式使用 |
+| `develop` | Preview（Vercel 自動產生的預覽網址） | 另一組測試用 Supabase 專案 | 驗收新功能，不影響正式資料 |
+
+### Vercel 設定
+
+1. Project Settings > Git：確認 **Production Branch** 設為 `main`。
+2. Project Settings > Environment Variables：`NEXT_PUBLIC_SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY` 這兩個變數，Environment 欄位分開設定兩組值：
+   - 勾選 **Production** 的那組 → 填正式 Supabase 專案的值
+   - 勾選 **Preview** 的那組 → 填測試 Supabase 專案的值（`develop` branch 的每次 push 都會部署成 Preview，自動套用這組）
+3. 測試 Supabase 專案跟正式專案一樣，要先執行 `supabase/schema.sql`（或依序執行 migrations）、並用 `/admin/setup` 建立測試站自己的管理員帳號 — 兩邊資料庫完全獨立，帳號、商品、訂單都不會互相影響。
+
+### 新增功能時的驗收流程
+
+1. 從 `develop` 建立新的 feature branch（或直接在 `develop` 上開發，看團隊習慣）進行開發。
+2. Push 上去後，Vercel 會自動產生一個 Preview 網址，連到測試 Supabase 專案，可以完整測試不影響正式站。
+3. 確認測試站功能正常、沒有破壞既有功能後，把改動 merge 進 `develop`（如果是用獨立 feature branch 開發的話）。
+4. 驗收沒問題後，把 `develop` merge 進 `main`，push 後 Vercel 會自動部署到 Production 正式網址。
+5. 如果正式環境需要新的 migration，記得也要在**正式 Supabase 專案**的 SQL Editor 執行一次（測試站跟正式站的資料庫是分開的，各自要套用 migration）。
+
 ## 功能模組
 
 - 預購／現貨商品管理（老師 → 品項 → 細項架構，各自獨立的商品/庫存/訂單流程）
