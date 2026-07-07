@@ -29,7 +29,7 @@ export const PAYMENT_STATUS_ORDER: PreorderPaymentStatus[] = [
 export const PAYMENT_STATUS_LABEL: Record<PreorderPaymentStatus, string> = {
   not_remitted: "未匯款",
   pending_confirmation: "待確認",
-  confirmed: "已確認",
+  confirmed: "匯款完成",
   underpaid: "少匯款",
   needs_supplement: "需補款",
   cancelled: "已取消",

@@ -236,6 +236,140 @@ async function autoApplyItemSurcharges(
   }
 }
 
+export interface BatchMergeResult extends ActionResult {
+  createdCount: number;
+  skipped: { customerName: string | null; reason: string }[];
+}
+
+interface BatchMergeGroup {
+  customerName: string | null;
+  itemIds: string[];
+}
+
+// 後台「批量合併賣貨便」：一次勾選多位買家，各自獨立建立一張出貨訂單（不會把不同買家混進同一張）。
+// 只合併賣貨便、匯款已確認、狀態可合併且尚未合併過的商品，其餘一律略過並回報原因，
+// 讓後台知道哪些買家沒有處理、為什麼——不會為了「批量」而放寬既有的單筆合併規則。
+export async function mergeShipmentItemsBatch(groups: BatchMergeGroup[]): Promise<BatchMergeResult> {
+  if (groups.length === 0) {
+    return { success: false, message: "請至少選擇一位買家", createdCount: 0, skipped: [] };
+  }
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    return { success: false, message: "尚未設定 Supabase", createdCount: 0, skipped: [] };
+  }
+
+  const allItemIds = Array.from(new Set(groups.flatMap((g) => g.itemIds)));
+  const { data: items, error } = await supabase
+    .from("shipment_items")
+    .select("id, status, order_type, shipment_id, order_id, order_item_id")
+    .in("id", allItemIds);
+
+  if (error || !items) {
+    return { success: false, message: error?.message ?? "讀取商品狀態失敗", createdCount: 0, skipped: [] };
+  }
+
+  const orderIds = Array.from(new Set(items.map((i) => i.order_id)));
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select("id, user_id, customer_name, pickup_method, payment_status")
+    .in("id", orderIds);
+
+  if (ordersError || !orders) {
+    return { success: false, message: ordersError?.message ?? "讀取訂單資料失敗", createdCount: 0, skipped: [] };
+  }
+
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+
+  let createdCount = 0;
+  const skipped: { customerName: string | null; reason: string }[] = [];
+
+  for (const group of groups) {
+    const reasons = new Set<string>();
+    const eligibleItems: { id: string; order_id: string; order_item_id: string }[] = [];
+
+    for (const itemId of group.itemIds) {
+      const item = itemById.get(itemId);
+      const order = item ? orderById.get(item.order_id) : undefined;
+      if (!item || !order || item.order_type !== "preorder") continue;
+
+      if (item.shipment_id) {
+        reasons.add("商品已合併過");
+        continue;
+      }
+      if (!MERGEABLE_SHIPMENT_STATUSES.includes(item.status)) {
+        reasons.add("商品尚未到貨或未達可合併狀態");
+        continue;
+      }
+      if ((order.pickup_method ?? "shipment") === "event_pickup") {
+        reasons.add("取貨方式為面交／活動取貨，不適用批量合併賣貨便");
+        continue;
+      }
+      if (order.payment_status !== "confirmed") {
+        reasons.add("尚未確認匯款");
+        continue;
+      }
+
+      eligibleItems.push({ id: item.id, order_id: item.order_id, order_item_id: item.order_item_id });
+    }
+
+    if (eligibleItems.length === 0) {
+      skipped.push({
+        customerName: group.customerName,
+        reason: reasons.size > 0 ? Array.from(reasons).join("、") : "沒有符合條件的商品",
+      });
+      continue;
+    }
+
+    const buyerOrder = orderById.get(eligibleItems[0].order_id);
+    const { data: shipment, error: shipmentError } = await supabase
+      .from("shipments")
+      .insert({
+        shipment_type: "preorder",
+        status: "packing",
+        user_id: buyerOrder?.user_id ?? null,
+        customer_name: group.customerName,
+      })
+      .select("id")
+      .single();
+
+    if (shipmentError || !shipment) {
+      skipped.push({
+        customerName: group.customerName,
+        reason: shipmentError?.message ?? "建立出貨訂單失敗",
+      });
+      continue;
+    }
+
+    const eligibleIds = eligibleItems.map((i) => i.id);
+    const { error: updateError } = await supabase
+      .from("shipment_items")
+      .update({ shipment_id: shipment.id, status: "packing", updated_at: new Date().toISOString() })
+      .in("id", eligibleIds);
+
+    if (updateError) {
+      skipped.push({ customerName: group.customerName, reason: updateError.message });
+      continue;
+    }
+
+    await autoApplyItemSurcharges(supabase, eligibleItems);
+    createdCount += 1;
+  }
+
+  revalidatePath("/admin/preorder-orders");
+  revalidatePath("/admin/shipments");
+  revalidatePath("/member/preorder-orders");
+  revalidatePath("/member/shipment-orders");
+
+  return {
+    success: true,
+    message: `成功建立 ${createdCount} 張出貨訂單，略過 ${skipped.length} 位買家`,
+    createdCount,
+    skipped,
+  };
+}
+
 // 後台點擊列印（單筆或批量）時標記「已列印」，方便辨識哪些出貨單已經印過。
 // 允許重複列印（例如手誤點到、或補印遺失的單子），這裡只更新時間戳記，不做次數限制。
 export async function markShipmentsPrinted(shipmentIds: string[]): Promise<ActionResult> {

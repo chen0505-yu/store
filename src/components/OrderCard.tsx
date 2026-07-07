@@ -38,6 +38,10 @@ export function OrderCard({
   order: Order;
   paymentSettings?: PaymentSettingsView | null;
 }) {
+  // 預購訂單的 order.status 建立後就固定是 pending_payment，直到出貨完成才會變 completed，
+  // 不會跟著 paymentStatus 更新——同時顯示兩者會讓已匯款的訂單還掛著「待匯款」，誤導客人，
+  // 所以預購訂單這裡只看 paymentStatus，不重複顯示這個已經過時的「待匯款」。
+  const showOrderStatusBadge = !(order.orderType === "preorder" && order.status === "pending_payment");
   const supplementTotal = activeSupplementTotal(order);
   const remittedAmount = order.payment?.actualAmount ?? null;
   const underpaidAmount =
@@ -60,9 +64,11 @@ export function OrderCard({
               {PAYMENT_STATUS_LABEL[order.paymentStatus]}
             </span>
           )}
-          <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-medium text-purple-500">
-            {STATUS_LABEL[order.status] ?? order.status}
-          </span>
+          {showOrderStatusBadge && (
+            <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-medium text-purple-500">
+              {STATUS_LABEL[order.status] ?? order.status}
+            </span>
+          )}
         </div>
       </div>
 

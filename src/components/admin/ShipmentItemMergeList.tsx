@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminShipmentItem } from "@/lib/data/admin-shipment-items";
 import type { OrderType } from "@/lib/types";
-import { mergeShipmentItems } from "@/lib/actions/shipments";
+import { mergeShipmentItems, mergeShipmentItemsBatch, type BatchMergeResult } from "@/lib/actions/shipments";
 import { deletePreorderOrder } from "@/lib/actions/orders";
 import { MERGEABLE_SHIPMENT_STATUSES, getDisplayShipmentStatusLabel } from "@/lib/shipment-status";
 import { OrderPaymentPanel } from "./OrderPaymentPanel";
@@ -51,12 +51,20 @@ export function ShipmentItemMergeList({
   orderType: OrderType;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedBuyers, setSelectedBuyers] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchMergeResult | null>(null);
   const [search, setSearch] = useState("");
   const [pickupFilter, setPickupFilter] = useState<PickupFilterKey>("all");
   const [page, setPage] = useState(1);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
+
+  function toggleBuyer(buyerId: string) {
+    setSelectedBuyers((prev) =>
+      prev.includes(buyerId) ? prev.filter((id) => id !== buyerId) : [...prev, buyerId]
+    );
+  }
 
   function toggle(id: string, disabled: boolean) {
     if (disabled) return;
@@ -151,10 +159,46 @@ export function ShipmentItemMergeList({
     [buyerGroups, page]
   );
 
+  function handleBatchMerge() {
+    if (selectedBuyers.length === 0) return;
+    const groups = buyerGroups
+      .filter((g) => selectedBuyers.includes(g.buyerId))
+      .map((g) => ({ customerName: g.customerName, itemIds: g.allItems.map((i) => i.id) }));
+    startTransition(async () => {
+      const result = await mergeShipmentItemsBatch(groups);
+      setBatchResult(result);
+      if (result.success) {
+        setSelectedBuyers([]);
+        router.refresh();
+      }
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {message && (
         <div className="rounded-2xl bg-red-50 p-3 text-sm text-red-600">{message}</div>
+      )}
+
+      {batchResult && (
+        <div className="flex flex-col gap-1 rounded-2xl bg-purple-50/60 p-3 text-sm">
+          <p className="font-semibold text-purple-700">{batchResult.message}</p>
+          {batchResult.skipped.length > 0 && (
+            <ul className="flex flex-col gap-0.5 text-xs text-zinc-500">
+              {batchResult.skipped.map((s, idx) => (
+                <li key={idx}>
+                  {s.customerName ?? "-"}：{s.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            onClick={() => setBatchResult(null)}
+            className="self-start text-xs text-purple-500 underline"
+          >
+            關閉
+          </button>
+        </div>
       )}
 
       <input
@@ -206,6 +250,24 @@ export function ShipmentItemMergeList({
         </button>
       </div>
 
+      {orderType === "preorder" && (
+        <div className="flex items-center justify-between rounded-2xl bg-purple-50/40 p-3">
+          <p className="text-sm text-zinc-500">
+            已勾選 {selectedBuyers.length} 位買家
+            <span className="ml-1 text-xs text-zinc-400">
+              （只會合併賣貨便、已確認匯款、尚未合併的商品，其餘自動略過）
+            </span>
+          </p>
+          <button
+            onClick={handleBatchMerge}
+            disabled={selectedBuyers.length === 0 || isPending}
+            className="rounded-full bg-purple-600 px-5 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            {isPending ? "處理中..." : "批量合併賣貨便"}
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col gap-4">
         {pagedGroups.map((group) => {
           const eligibleItems = group.allItems.filter(
@@ -224,13 +286,23 @@ export function ShipmentItemMergeList({
           return (
             <div key={group.buyerId} className="flex flex-col gap-3 rounded-3xl bg-purple-50/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-purple-700">
-                    買家：{group.customerName ?? "-"}
-                  </p>
-                  <p className="text-xs text-zinc-400">
-                    平台訂單編號：{group.orderNumbers.join("、")}
-                  </p>
+                <div className="flex items-start gap-2">
+                  {orderType === "preorder" && (
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={selectedBuyers.includes(group.buyerId)}
+                      onChange={() => toggleBuyer(group.buyerId)}
+                    />
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold text-purple-700">
+                      買家：{group.customerName ?? "-"}
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      平台訂單編號：{group.orderNumbers.join("、")}
+                    </p>
+                  </div>
                 </div>
                 {orderType === "preorder" && eligibleGroups.size > 0 && (
                   <div className="flex flex-wrap items-center gap-2">

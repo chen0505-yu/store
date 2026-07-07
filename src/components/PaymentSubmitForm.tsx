@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { PaymentView } from "@/lib/types";
 import { submitPayment } from "@/lib/actions/payments";
 import { uploadImage } from "@/lib/actions/upload";
@@ -22,9 +22,11 @@ export function PaymentSubmitForm({
       ? String(existingPayment.actualAmount)
       : ""
   );
+  const [fileName, setFileName] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, startSubmit] = useTransition();
   const [isUploading, startUpload] = useTransition();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -34,6 +36,7 @@ export function PaymentSubmitForm({
       e.target.value = "";
       return;
     }
+    setFileName(file.name);
     const formData = new FormData();
     formData.append("file", file);
     startUpload(async () => {
@@ -102,21 +105,31 @@ export function PaymentSubmitForm({
           required
         />
       </div>
-      <div className="flex items-center gap-2">
-        <input
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          onChange={handleFileChange}
-          required={!screenshotUrl}
-          className="text-xs"
-        />
-        {isUploading && <span className="text-xs text-purple-500">上傳中...</span>}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="rounded-full bg-gradient-to-r from-pink-400 to-purple-400 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {isUploading ? "上傳中..." : "上傳匯款截圖"}
+          </button>
+          {fileName && <span className="text-xs text-zinc-500">{fileName}</span>}
+        </div>
+        {screenshotUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={screenshotUrl} alt="匯款截圖" className="h-20 w-20 rounded-lg object-cover" />
+        )}
       </div>
       <p className="text-[11px] text-zinc-400">帳號末五碼：無卡匯款請填「無卡」。匯款截圖為必填，請務必上傳。</p>
-      {screenshotUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={screenshotUrl} alt="匯款截圖" className="h-20 w-20 rounded-lg object-cover" />
-      )}
       <button
         type="submit"
         disabled={isSubmitting || !screenshotUrl}

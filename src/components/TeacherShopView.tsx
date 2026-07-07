@@ -7,8 +7,6 @@ import { usePreorderCart } from "@/lib/cart/use-preorder-cart";
 import { getPreorderPhase, getVariantDisabledReason } from "@/lib/product-availability";
 import { ImageGalleryLightbox } from "@/components/ImageGalleryLightbox";
 import { FloatingCartButton } from "@/components/FloatingCartButton";
-import { ProgressStepper } from "@/components/ProgressStepper";
-import { PRODUCT_PROGRESS_STEPS, getProductArrivalProgressIndex } from "@/lib/progress";
 
 // CP 防雷：預設模糊遮罩蓋住圖片，客人點一下才看到圖片，只影響圖片，不影響名稱/價格/加入購物車。
 function GroupImage({ group }: { group: TeacherShopGroup }) {
@@ -144,14 +142,6 @@ export function TeacherShopView({
                     </p>
                   )}
                 </div>
-              </div>
-
-              <div className="mt-3">
-                <ProgressStepper
-                  steps={PRODUCT_PROGRESS_STEPS}
-                  currentIndex={getProductArrivalProgressIndex(group.arrivalStatus)}
-                  size="sm"
-                />
               </div>
 
               {group.isBlindDraw &&

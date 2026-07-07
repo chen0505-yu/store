@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/Header";
-import { CartBar } from "@/components/CartBar";
 import { RouteVisibilityGate } from "@/components/RouteVisibilityGate";
 
 const geistSans = Geist({
@@ -35,7 +34,6 @@ export default function RootLayout({
           <Header />
         </RouteVisibilityGate>
         <main className="flex flex-1 flex-col">{children}</main>
-        <CartBar />
       </body>
     </html>
   );
