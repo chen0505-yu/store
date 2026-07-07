@@ -1,0 +1,77 @@
+/* 同人活動 POS 系統專屬視覺主題：星空 / 深藍 / 午夜紫 / 金色點綴。
+   刻意使用獨立變數名稱（--pos-*），不覆寫 globals.css 的 --background / --foreground，
+   避免影響原本粉紫風格的商城頁面（/、/preorder、/instock、/admin ...）。 */
+
+.pos-theme {
+  --pos-bg-deep: #05060f;
+  --pos-bg-navy: #0b1030;
+  --pos-bg-purple: #1a1140;
+  --pos-gold: #e9c46a;
+  --pos-gold-strong: #f4d78a;
+  --pos-text: #f3efff;
+  --pos-text-muted: #a9a3d1;
+  --pos-glass-bg: rgba(18, 18, 46, 0.55);
+  --pos-glass-border: rgba(233, 196, 106, 0.35);
+  --pos-glow: 0 0 24px rgba(233, 196, 106, 0.25);
+
+  min-height: 100vh;
+  color: var(--pos-text);
+  background:
+    radial-gradient(1px 1px at 10% 15%, #ffffff 100%, transparent 0),
+    radial-gradient(1px 1px at 30% 60%, #ffffff 100%, transparent 0),
+    radial-gradient(1.5px 1.5px at 50% 20%, #ffffff 100%, transparent 0),
+    radial-gradient(1px 1px at 70% 80%, #ffffff 100%, transparent 0),
+    radial-gradient(1.5px 1.5px at 85% 35%, #ffffff 100%, transparent 0),
+    radial-gradient(1px 1px at 92% 65%, #ffffff 100%, transparent 0),
+    radial-gradient(1px 1px at 15% 85%, #ffffff 100%, transparent 0),
+    radial-gradient(1.5px 1.5px at 60% 45%, #ffffff 100%, transparent 0),
+    radial-gradient(ellipse at top, var(--pos-bg-purple) 0%, var(--pos-bg-navy) 45%, var(--pos-bg-deep) 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-attachment: fixed;
+  font-family: var(--font-pos-inter), var(--font-pos-noto), "Noto Sans TC", sans-serif;
+}
+
+.pos-glass {
+  background: var(--pos-glass-bg);
+  border: 1px solid var(--pos-glass-border);
+  border-radius: 1rem;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--pos-glow);
+}
+
+.pos-glow-btn {
+  background: linear-gradient(135deg, var(--pos-gold) 0%, #b8892f 100%);
+  color: #1a1140;
+  font-weight: 700;
+  border-radius: 0.75rem;
+  box-shadow: 0 0 18px rgba(233, 196, 106, 0.45);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.pos-glow-btn:hover:not(:disabled) {
+  box-shadow: 0 0 28px rgba(233, 196, 106, 0.7);
+  transform: translateY(-1px);
+}
+
+.pos-glow-btn:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.pos-card-soldout {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.pos-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--pos-glass-border);
+  border-radius: 0.5rem;
+  color: var(--pos-text);
+}
+
+.pos-input::placeholder {
+  color: var(--pos-text-muted);
+}
