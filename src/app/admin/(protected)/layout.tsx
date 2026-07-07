@@ -42,7 +42,7 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 gap-6 px-4 py-8">
       <aside className="w-48 shrink-0">
-        <p className="mb-4 text-lg font-bold text-purple-700">🦝 LITAN 後台</p>
+        <p className="mb-4 text-lg font-bold text-purple-700">🦝 葴葴x貍攤不售後 後台</p>
         <nav className="flex flex-col gap-1 text-sm">
           {NAV_ITEMS.map((item) => (
             <Link

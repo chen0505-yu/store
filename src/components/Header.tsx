@@ -18,7 +18,7 @@ export async function Header() {
           className="flex items-center gap-2 text-lg font-bold text-purple-700"
         >
           <span>🦝</span>
-          <span>LITAN</span>
+          <span>葴葴x貍攤不售後</span>
         </Link>
         <nav className="flex items-center gap-4 text-sm font-medium text-purple-600">
           <Link href="/preorder" className="hover:text-purple-800">

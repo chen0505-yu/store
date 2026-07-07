@@ -27,7 +27,7 @@ export function AdminLoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4 rounded-3xl bg-white p-6 shadow-sm">
-      <h1 className="text-center text-2xl font-bold text-purple-700">🦝 LITAN 後台登入</h1>
+      <h1 className="text-center text-2xl font-bold text-purple-700">🦝 葴葴x貍攤不售後 後台登入</h1>
       <div className="flex flex-col gap-1">
         <label className="text-xs text-zinc-500">帳號</label>
         <input

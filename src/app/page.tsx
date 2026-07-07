@@ -10,7 +10,7 @@ export default async function Home() {
       <div>
         <p className="text-5xl">🦝</p>
         <h1 className="mt-2 text-3xl font-bold text-purple-700">
-          LITAN Platform
+          葴葴x貍攤不售後
         </h1>
         <p className="mt-2 text-zinc-500">同人商品預購與現貨販售平台</p>
       </div>

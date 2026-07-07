@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "LITAN Platform",
+  title: "葴葴x貍攤不售後",
   description: "中文同人商品預購與現貨販售平台",
 };
 
