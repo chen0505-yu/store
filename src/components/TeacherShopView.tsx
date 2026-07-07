@@ -5,8 +5,10 @@ import Link from "next/link";
 import type { TeacherShop, TeacherShopGroup } from "@/lib/data/teacher-shop";
 import { usePreorderCart } from "@/lib/cart/use-preorder-cart";
 import { getPreorderPhase, getVariantDisabledReason } from "@/lib/product-availability";
-import { PREORDER_STATUS_LABEL } from "@/lib/product-status";
 import { ImageGalleryLightbox } from "@/components/ImageGalleryLightbox";
+import { FloatingCartButton } from "@/components/FloatingCartButton";
+import { ProgressStepper } from "@/components/ProgressStepper";
+import { PRODUCT_PROGRESS_STEPS, getProductArrivalProgressIndex } from "@/lib/progress";
 
 // CP 防雷：預設模糊遮罩蓋住圖片，客人點一下才看到圖片，只影響圖片，不影響名稱/價格/加入購物車。
 function GroupImage({ group }: { group: TeacherShopGroup }) {
@@ -136,13 +138,20 @@ export function TeacherShopView({
                 <div>
                   <h2 className="font-bold text-zinc-800">{group.name}</h2>
                   <p className="text-sm text-pink-600">NT$ {group.price}</p>
-                  <p className="text-xs text-purple-400">{PREORDER_STATUS_LABEL[group.arrivalStatus]}</p>
                   {group.isBlindDraw && (
                     <p className="text-xs font-medium text-pink-500">
                       盲抽：每買 {group.blindDrawThresholdQty} 抽可選 {group.blindDrawPickQty} 個保底
                     </p>
                   )}
                 </div>
+              </div>
+
+              <div className="mt-3">
+                <ProgressStepper
+                  steps={PRODUCT_PROGRESS_STEPS}
+                  currentIndex={getProductArrivalProgressIndex(group.arrivalStatus)}
+                  size="sm"
+                />
               </div>
 
               {group.isBlindDraw &&
@@ -220,6 +229,7 @@ export function TeacherShopView({
           ))}
         </div>
       )}
+      <FloatingCartButton cartType="preorder" />
     </div>
   );
 }

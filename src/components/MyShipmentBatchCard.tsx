@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import type { MyShipmentOrder } from "@/lib/data/my-shipments";
 import { setShipmentMarketplaceOrderNumber } from "@/lib/actions/shipments";
 import { getDisplayShipmentStatusLabel } from "@/lib/shipment-status";
+import { ProgressStepper } from "@/components/ProgressStepper";
+import { getShipmentProgressSteps, getShipmentProgressIndex } from "@/lib/progress";
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -55,6 +57,18 @@ export function MyShipmentBatchCard({ batch }: { batch: MyShipmentOrder }) {
         </span>
       </div>
 
+      <div className="mt-3 rounded-2xl bg-purple-50/50 p-3">
+        <ProgressStepper
+          steps={getShipmentProgressSteps(batch.pickupMethod)}
+          currentIndex={getShipmentProgressIndex({
+            status: batch.status,
+            pickupMethod: batch.pickupMethod,
+            marketplaceOrderNumber: batch.marketplaceOrderNumber,
+          })}
+          size="sm"
+        />
+      </div>
+
       <ul className="mt-3 flex flex-col gap-1 text-sm text-zinc-600">
         {batch.items.map((item, idx) => (
           <li key={idx} className="flex flex-col gap-0.5">
@@ -92,23 +106,22 @@ export function MyShipmentBatchCard({ batch }: { batch: MyShipmentOrder }) {
       {pendingTotal > 0 && isEventPickup && (
         <div className="mt-4 rounded-2xl bg-pink-50/60 p-3">
           <p className="text-sm font-semibold text-pink-600">
-            您本次需要補款 NT$ {pendingTotal}
-            {pendingReasons.length > 0 ? `（${pendingReasons.join("、")}）` : ""}，請於現場取貨時補齊。
+            需要補多少錢：NT$ {pendingTotal}
+            {pendingReasons.length > 0 ? `（${pendingReasons.join("、")}）` : ""}
           </p>
+          <p className="mt-1 text-xs text-pink-500">請於現場取貨時補齊。</p>
         </div>
       )}
 
       {canFillMarketplaceNumber && (
         <div className="mt-4 flex flex-col gap-2 rounded-2xl bg-pink-50/60 p-3">
-          <p className="text-xs text-zinc-500">
-            商品已開賣貨便，請到賣貨便完成下單後，把賣貨便訂單編號填在下方，方便核對出貨。
-          </p>
           {pendingTotal > 0 && (
             <p className="text-sm font-semibold text-pink-600">
-              您本次需要補款 NT$ {pendingTotal}
-              {pendingReasons.length > 0 ? `（${pendingReasons.join("、")}）` : ""}，請在賣貨便下單時填入此金額。
+              需要補多少錢：NT$ {pendingTotal}
+              {pendingReasons.length > 0 ? `（${pendingReasons.join("、")}）` : ""}
             </p>
           )}
+          <p className="text-xs text-zinc-500">請到賣貨便依照賣場金額下單，並填寫賣貨便訂單編號：</p>
           <div className="flex gap-2">
             <input
               value={value}

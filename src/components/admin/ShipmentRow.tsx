@@ -6,6 +6,8 @@ import type { AdminShipment } from "@/lib/data/shipments";
 import { advanceShipmentStatus, deleteShipmentOrder, markShipmentsPrinted } from "@/lib/actions/shipments";
 import { getDisplayShipmentStatusLabel } from "@/lib/shipment-status";
 import { OrderPaymentPanel } from "./OrderPaymentPanel";
+import { ProgressStepper } from "@/components/ProgressStepper";
+import { getShipmentProgressSteps, getShipmentProgressIndex } from "@/lib/progress";
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -78,6 +80,18 @@ export function ShipmentRow({ shipment }: { shipment: AdminShipment }) {
         </div>
       </div>
 
+      <div className="rounded-2xl bg-purple-50/50 p-3">
+        <ProgressStepper
+          steps={getShipmentProgressSteps(shipment.pickupMethod)}
+          currentIndex={getShipmentProgressIndex({
+            status: shipment.status,
+            pickupMethod: shipment.pickupMethod,
+            marketplaceOrderNumber: shipment.marketplaceOrderNumber,
+          })}
+          size="sm"
+        />
+      </div>
+
       <div className="flex flex-col gap-1 border-t border-zinc-100 pt-2 text-sm text-zinc-600">
         {shipment.items.map((item, idx) => {
           const displayName =
@@ -138,19 +152,33 @@ export function ShipmentRow({ shipment }: { shipment: AdminShipment }) {
           <p className="text-xs font-semibold text-pink-600">
             二補（到貨後補差額，設定後買家會在「我的出貨訂單」看到需補金額）
           </p>
-          {shipment.orders.map((order) => (
-            <div key={order.id} className="flex items-center justify-between gap-2">
-              <span className="font-mono text-xs text-zinc-400">{order.orderNumber}</span>
-              <OrderPaymentPanel
-                orderId={order.id}
-                orderNumber={order.orderNumber}
-                paymentStatus={order.paymentStatus}
-                payment={order.payment}
-                supplements={order.supplements}
-                label="二補"
-              />
-            </div>
-          ))}
+          {shipment.orders.map((order) => {
+            const activeSupplementTotal = order.supplements
+              .filter((s) => s.status !== "cancelled" && s.status !== "not_needed")
+              .reduce((sum, s) => sum + s.amount, 0);
+            return (
+              <div key={order.id} className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-xs text-zinc-400">{order.orderNumber}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      activeSupplementTotal > 0 ? "bg-pink-100 text-pink-600" : "bg-zinc-100 text-zinc-400"
+                    }`}
+                  >
+                    此買家二補總額 NT$ {activeSupplementTotal}
+                  </span>
+                </span>
+                <OrderPaymentPanel
+                  orderId={order.id}
+                  orderNumber={order.orderNumber}
+                  paymentStatus={order.paymentStatus}
+                  payment={order.payment}
+                  supplements={order.supplements}
+                  label="二補"
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 

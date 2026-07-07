@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentMember } from "@/lib/auth";
 import { getMessagesByOrderIds } from "@/lib/data/order-messages";
+import { getPreorderOrderProgressIndex } from "@/lib/progress";
 import type {
   ArrivalStatus,
   Order,
@@ -11,6 +12,7 @@ import type {
 } from "@/lib/types";
 
 interface OrderItemRow {
+  id: string;
   product_id: string | null;
   product_name: string;
   teacher_name: string | null;
@@ -63,7 +65,7 @@ interface BonusSelectionRow {
 }
 
 const ORDER_ITEM_COLUMNS =
-  "product_id, product_name, teacher_name, product_group_id, product_group_name, product_variant_id, variant_name, quantity, price, subtotal";
+  "id, product_id, product_name, teacher_name, product_group_id, product_group_name, product_variant_id, variant_name, quantity, price, subtotal";
 
 // 依登入會員查詢「我的預購訂單」或「我的現貨訂單」，兩者查詢時皆以 order_type 篩選，
 // 確保預購與現貨訂單完全分流顯示。未登入時回傳空陣列（頁面會另外提示請先登入）。
@@ -109,6 +111,11 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
     bonusSelectionsByOrderId.set(b.order_id, list);
   }
 
+  // 商品進度／訂單進度用：這筆訂單的每件商品是否已經合併出貨（shipment_items.shipment_id），
+  // 以及合併進去的出貨訂單目前狀態（賣家預購訂單進度第 3-4 階段判斷用）。
+  const mergedByOrderItemId = new Map<string, boolean>();
+  const shipmentStatusByOrderId = new Map<string, string[]>();
+
   if (orderType === "preorder") {
     const groupIds = Array.from(
       new Set(
@@ -119,20 +126,28 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
         )
       )
     );
+    const orderItemIds = rows.flatMap((o) => (o.order_items ?? []).map((i) => i.id));
 
-    const [{ data: groups }, { data: payments }, { data: supplements }] = await Promise.all([
-      groupIds.length > 0
-        ? supabase.from("product_groups").select("id, arrival_status").in("id", groupIds)
-        : Promise.resolve({ data: [] }),
-      supabase
-        .from("payments")
-        .select("order_id, remittance_date, remittance_time, account_last5, screenshot_url, actual_amount")
-        .in("order_id", orderIds),
-      supabase
-        .from("supplements")
-        .select("order_id, amount, reason, status, payment_method, note")
-        .in("order_id", orderIds),
-    ]);
+    const [{ data: groups }, { data: payments }, { data: supplements }, { data: shipmentItems }] =
+      await Promise.all([
+        groupIds.length > 0
+          ? supabase.from("product_groups").select("id, arrival_status").in("id", groupIds)
+          : Promise.resolve({ data: [] }),
+        supabase
+          .from("payments")
+          .select("order_id, remittance_date, remittance_time, account_last5, screenshot_url, actual_amount")
+          .in("order_id", orderIds),
+        supabase
+          .from("supplements")
+          .select("order_id, amount, reason, status, payment_method, note")
+          .in("order_id", orderIds),
+        orderItemIds.length > 0
+          ? supabase
+              .from("shipment_items")
+              .select("order_id, order_item_id, shipment_id")
+              .in("order_item_id", orderItemIds)
+          : Promise.resolve({ data: [] }),
+      ]);
 
     arrivalStatusByGroupId = new Map((groups ?? []).map((g) => [g.id, g.arrival_status]));
     paymentByOrderId = new Map((payments ?? []).map((p) => [p.order_id, p as PaymentRow]));
@@ -141,6 +156,24 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
       const list = supplementsByOrderId.get(s.order_id) ?? [];
       list.push(s);
       supplementsByOrderId.set(s.order_id, list);
+    }
+
+    const shipmentIds = Array.from(
+      new Set((shipmentItems ?? []).map((si) => si.shipment_id).filter((id): id is string => Boolean(id)))
+    );
+    const { data: shipmentRows } =
+      shipmentIds.length > 0
+        ? await supabase.from("shipments").select("id, status").in("id", shipmentIds)
+        : { data: [] };
+    const shipmentStatusById = new Map((shipmentRows ?? []).map((s) => [s.id, s.status as string]));
+
+    for (const si of shipmentItems ?? []) {
+      mergedByOrderItemId.set(si.order_item_id, Boolean(si.shipment_id));
+      if (si.shipment_id) {
+        const list = shipmentStatusByOrderId.get(si.order_id) ?? [];
+        list.push(shipmentStatusById.get(si.shipment_id) ?? "");
+        shipmentStatusByOrderId.set(si.order_id, list);
+      }
     }
   }
 
@@ -151,6 +184,13 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
 
   return rows.map((o) => {
     const payment = paymentByOrderId.get(o.id);
+    const orderItems = o.order_items ?? [];
+    const allItemsMerged =
+      orderItems.length > 0 && orderItems.every((it) => mergedByOrderItemId.get(it.id) === true);
+    const shipmentStatuses = shipmentStatusByOrderId.get(o.id) ?? [];
+    const mergedShipmentsListedOrBeyond =
+      shipmentStatuses.length > 0 && shipmentStatuses.every((s) => s === "listed" || s === "completed");
+
     return {
       id: o.id,
       orderNumber: o.order_number,
@@ -158,7 +198,7 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
       status: o.status,
       totalAmount: Number(o.total_amount),
       createdAt: o.created_at,
-      items: (o.order_items ?? []).map((it) => ({
+      items: orderItems.map((it) => ({
         productName: it.product_name,
         teacherName: it.teacher_name,
         quantity: it.quantity,
@@ -169,7 +209,16 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
         arrivalStatus: it.product_group_id
           ? arrivalStatusByGroupId.get(it.product_group_id) ?? null
           : null,
+        merged: mergedByOrderItemId.get(it.id) ?? false,
       })),
+      preorderProgressIndex:
+        o.order_type === "preorder"
+          ? getPreorderOrderProgressIndex({
+              paymentConfirmed: o.payment_status === "confirmed",
+              allItemsMerged,
+              mergedShipmentsListedOrBeyond,
+            })
+          : undefined,
       marketplaceOrderNumber: o.marketplace_order_number,
       paymentStatus: o.payment_status,
       payment: payment

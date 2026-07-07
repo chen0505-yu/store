@@ -20,6 +20,8 @@ import {
 import { PREORDER_STATUS_LABEL, PREORDER_STATUS_ORDER } from "@/lib/product-status";
 import { MultiImageUploader } from "./MultiImageUploader";
 import { TagPicker } from "./TagPicker";
+import { ProgressStepper } from "@/components/ProgressStepper";
+import { PRODUCT_PROGRESS_STEPS, getProductArrivalProgressIndex } from "@/lib/progress";
 
 function VariantRow({ variant }: { variant: AdminVariant }) {
   const [editing, setEditing] = useState(false);
@@ -312,6 +314,14 @@ export function AdminProductGroupRow({ group, allTags }: { group: AdminProductGr
             封存
           </button>
         </div>
+      </div>
+
+      <div className="rounded-xl bg-purple-50/40 p-3">
+        <ProgressStepper
+          steps={PRODUCT_PROGRESS_STEPS}
+          currentIndex={getProductArrivalProgressIndex(group.arrivalStatus)}
+          size="sm"
+        />
       </div>
 
       <div className="flex flex-col gap-2 rounded-xl bg-pink-50/60 p-3">

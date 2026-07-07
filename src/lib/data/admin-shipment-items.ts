@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type {
+  ArrivalStatus,
   OrderBonusSelectionView,
   OrderMessageView,
   OrderType,
@@ -33,6 +34,8 @@ export interface AdminShipmentItem {
   pickupMethod: "shipment" | "event_pickup" | null;
   eventPickupDisplayName: string | null;
   messages: OrderMessageView[];
+  arrivalStatus: ArrivalStatus | null; // 只用於預購：品項目前的到貨狀態（商品進度條用，見 src/lib/progress.ts）
+  merged: boolean; // 這筆訂單的這件商品是否已經合併出貨（商品進度第 4 階段判斷用）
 }
 
 interface ShipmentItemRow {
@@ -47,6 +50,7 @@ interface OrderItemLookupRow {
   id: string;
   product_name: string;
   teacher_name: string | null;
+  product_group_id: string | null;
   product_group_name: string | null;
   variant_name: string | null;
   quantity: number;
@@ -104,7 +108,9 @@ export async function getShipmentItemsForAdmin(
   ] = await Promise.all([
     supabase
       .from("order_items")
-      .select("id, product_name, teacher_name, product_group_name, variant_name, quantity, price, subtotal")
+      .select(
+        "id, product_name, teacher_name, product_group_id, product_group_name, variant_name, quantity, price, subtotal"
+      )
       .in("id", orderItemIds),
     supabase
       .from("orders")
@@ -128,6 +134,21 @@ export async function getShipmentItemsForAdmin(
       .select("order_id, condition_product_name, bonus_product_name, quantity")
       .in("order_id", orderIds),
   ]);
+
+  const groupIds = Array.from(
+    new Set(
+      ((orderItems ?? []) as OrderItemLookupRow[])
+        .map((oi) => oi.product_group_id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const { data: groups } =
+    groupIds.length > 0
+      ? await supabase.from("product_groups").select("id, arrival_status").in("id", groupIds)
+      : { data: [] };
+  const arrivalStatusByGroupId = new Map<string, ArrivalStatus | null>(
+    (groups ?? []).map((g) => [g.id, g.arrival_status])
+  );
 
   const orderItemMap = new Map<string, OrderItemLookupRow>(
     ((orderItems ?? []) as OrderItemLookupRow[]).map((oi) => [oi.id, oi])
@@ -206,6 +227,8 @@ export async function getShipmentItemsForAdmin(
       pickupMethod: order.pickup_method,
       eventPickupDisplayName: order.event_pickup_display_name,
       messages: messagesByOrderId.get(r.order_id) ?? [],
+      arrivalStatus: oi.product_group_id ? arrivalStatusByGroupId.get(oi.product_group_id) ?? null : null,
+      merged: Boolean(r.shipment_id),
     });
   }
   return result;

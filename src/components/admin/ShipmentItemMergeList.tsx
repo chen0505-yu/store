@@ -11,6 +11,13 @@ import { OrderPaymentPanel } from "./OrderPaymentPanel";
 import { OrderMessages } from "@/components/OrderMessages";
 import { Collapsible } from "./Collapsible";
 import { Pagination } from "./Pagination";
+import { ProgressStepper } from "@/components/ProgressStepper";
+import {
+  PRODUCT_PROGRESS_STEPS,
+  PREORDER_ORDER_PROGRESS_STEPS,
+  getOrderItemProgressIndex,
+  getPreorderOrderProgressIndex,
+} from "@/lib/progress";
 
 const PAGE_SIZE = 20;
 
@@ -276,6 +283,23 @@ export function ShipmentItemMergeList({
                       </div>
                     }
                   >
+                    {orderType === "preorder" && (
+                      <div className="mb-2 rounded-2xl bg-purple-50/50 p-3">
+                        <ProgressStepper
+                          steps={PREORDER_ORDER_PROGRESS_STEPS}
+                          currentIndex={getPreorderOrderProgressIndex({
+                            paymentConfirmed: orderItems[0].paymentStatus === "confirmed",
+                            allItemsMerged: orderItems.every((i) => i.merged),
+                            mergedShipmentsListedOrBeyond:
+                              orderItems.length > 0 &&
+                              orderItems.every(
+                                (i) => i.merged && (i.status === "listed" || i.status === "completed")
+                              ),
+                          })}
+                          size="sm"
+                        />
+                      </div>
+                    )}
                     <div className="flex flex-col gap-2">
                       {orderItems.map((item) => {
                         const disabled = !MERGEABLE_SHIPMENT_STATUSES.includes(item.status) || Boolean(item.shipmentId);
@@ -308,6 +332,15 @@ export function ShipmentItemMergeList({
                                 <p className="text-xs text-pink-500">
                                   賣貨便訂單編號：{item.shipmentMarketplaceOrderNumber}
                                 </p>
+                              )}
+                              {orderType === "preorder" && (
+                                <div className="mt-1.5 max-w-xs">
+                                  <ProgressStepper
+                                    steps={PRODUCT_PROGRESS_STEPS}
+                                    currentIndex={getOrderItemProgressIndex(item.arrivalStatus, item.merged)}
+                                    size="sm"
+                                  />
+                                </div>
                               )}
                             </div>
                             <span

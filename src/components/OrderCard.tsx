@@ -1,13 +1,18 @@
 import type { Order } from "@/lib/types";
 import {
   PAYMENT_STATUS_LABEL,
-  PREORDER_STATUS_LABEL,
   SUPPLEMENT_PAYMENT_METHOD_LABEL,
   SUPPLEMENT_STATUS_LABEL,
 } from "@/lib/product-status";
 import { PaymentSubmitForm } from "@/components/PaymentSubmitForm";
 import { OrderMessages } from "@/components/OrderMessages";
 import { PaymentAccountInfo } from "@/components/PaymentAccountInfo";
+import { ProgressStepper } from "@/components/ProgressStepper";
+import {
+  PRODUCT_PROGRESS_STEPS,
+  PREORDER_ORDER_PROGRESS_STEPS,
+  getOrderItemProgressIndex,
+} from "@/lib/progress";
 import type { PaymentSettingsView } from "@/lib/data/payment-settings";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -70,29 +75,41 @@ export function OrderCard({
         </p>
       )}
 
-      <ul className="mt-3 flex flex-col gap-1 text-sm text-zinc-600">
+      {order.orderType === "preorder" && order.preorderProgressIndex !== undefined && (
+        <div className="mt-3 rounded-2xl bg-purple-50/50 p-3">
+          <ProgressStepper
+            steps={PREORDER_ORDER_PROGRESS_STEPS}
+            currentIndex={order.preorderProgressIndex}
+            size="sm"
+          />
+        </div>
+      )}
+
+      <ul className="mt-3 flex flex-col gap-2 text-sm text-zinc-600">
         {order.items.map((item, idx) => {
           const displayName =
             item.productGroupName && item.variantName
               ? `${item.productGroupName} - ${item.variantName}`
               : item.productName;
           return (
-            <li key={idx} className="flex items-center justify-between gap-2">
-              <span>
-                {displayName}
-                {item.teacherName ? `（${item.teacherName}）` : ""}
-                <span className="ml-1 text-xs text-zinc-400">
-                  單價 NT$ {item.price} × {item.quantity}
-                </span>
-              </span>
-              <span className="flex items-center gap-2">
-                {item.arrivalStatus && (
-                  <span className="rounded-full bg-purple-50 px-2 py-0.5 text-xs text-purple-500">
-                    {PREORDER_STATUS_LABEL[item.arrivalStatus]}
+            <li key={idx} className="flex flex-col gap-1.5 border-t border-purple-50 pt-2 first:border-t-0 first:pt-0">
+              <div className="flex items-center justify-between gap-2">
+                <span>
+                  {displayName}
+                  {item.teacherName ? `（${item.teacherName}）` : ""}
+                  <span className="ml-1 text-xs text-zinc-400">
+                    單價 NT$ {item.price} × {item.quantity}
                   </span>
-                )}
+                </span>
                 <span>小計 NT$ {item.subtotal}</span>
-              </span>
+              </div>
+              {item.arrivalStatus !== undefined && item.arrivalStatus !== null && (
+                <ProgressStepper
+                  steps={PRODUCT_PROGRESS_STEPS}
+                  currentIndex={getOrderItemProgressIndex(item.arrivalStatus ?? null, item.merged ?? false)}
+                  size="sm"
+                />
+              )}
             </li>
           );
         })}

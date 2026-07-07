@@ -47,6 +47,7 @@ export interface OrderItemView {
   productGroupName?: string | null; // 只用於預購（老師/品項/細項架構）：品項名稱，例如「小卡」
   variantName?: string | null; // 只用於預購：細項名稱，例如「白厄」
   arrivalStatus?: ArrivalStatus | null; // 只用於預購：該品項目前的狀態
+  merged?: boolean; // 只用於預購：這筆訂單的這件商品是否已經合併出貨（商品進度第 4 階段判斷用）
 }
 
 export interface SupplementView {
@@ -98,4 +99,5 @@ export interface Order {
   pickupMethod?: "shipment" | "event_pickup" | null; // 只用於預購：取貨方式
   eventPickupDisplayName?: string | null; // 只用於預購：選擇現場取貨時的活動場次快照
   messages: OrderMessageView[];
+  preorderProgressIndex?: number; // 只用於預購：賣家預購訂單進度（見 src/lib/progress.ts）
 }
