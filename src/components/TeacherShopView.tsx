@@ -69,7 +69,7 @@ export function TeacherShopView({
   const coverImage = shop.images[0] ?? shop.avatarUrl;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-8">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-8 pb-[180px] md:pb-8">
       <Link href="/preorder" className="text-sm text-purple-500 underline">
         ← 回預購專區
       </Link>

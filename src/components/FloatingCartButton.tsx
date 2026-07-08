@@ -19,7 +19,7 @@ export function FloatingCartButton({ cartType }: { cartType: "preorder" | "insto
   return (
     <Link
       href={href}
-      className="fixed bottom-6 right-4 z-30 flex flex-col items-center gap-0.5 rounded-full bg-gradient-to-br from-pink-400 to-purple-400 px-4 py-3 text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl print:hidden"
+      className="fixed bottom-6 right-4 z-30 flex origin-bottom-right scale-[0.8] flex-col items-center gap-0.5 rounded-full bg-gradient-to-br from-pink-400 to-purple-400 px-4 py-3 text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl md:scale-100 print:hidden"
     >
       <span className="text-xl">🛒</span>
       <span className="text-xs font-semibold">{itemCount} 件</span>

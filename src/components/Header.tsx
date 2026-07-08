@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getCurrentMember } from "@/lib/auth";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import { logoutMember } from "@/lib/actions/auth";
+import { MobileNav } from "@/components/MobileNav";
 
 async function handleLogout() {
   "use server";
@@ -8,7 +10,7 @@ async function handleLogout() {
 }
 
 export async function Header() {
-  const member = await getCurrentMember();
+  const [member, admin] = await Promise.all([getCurrentMember(), getCurrentAdmin()]);
 
   return (
     <header className="sticky top-0 z-20 border-b border-pink-100 bg-white/80 backdrop-blur print:hidden">
@@ -20,7 +22,7 @@ export async function Header() {
           <span>🦝</span>
           <span>葴葴x貍攤不售後</span>
         </Link>
-        <nav className="flex items-center gap-4 text-sm font-medium text-purple-600">
+        <nav className="hidden items-center gap-4 text-sm font-medium text-purple-600 md:flex">
           <Link href="/preorder" className="hover:text-purple-800">
             預購專區
           </Link>
@@ -53,6 +55,9 @@ export async function Header() {
             後台
           </Link>
         </nav>
+        <div className="md:hidden">
+          <MobileNav memberName={member?.fbName ?? null} isAdmin={Boolean(admin)} />
+        </div>
       </div>
     </header>
   );
