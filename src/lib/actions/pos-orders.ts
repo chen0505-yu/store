@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getPosSupabaseServerClient as getSupabaseServerClient } from "@/lib/supabase/pos-server";
 import { getCurrentStaff } from "@/lib/pos-auth";
-import type { PosActionResult } from "@/lib/pos-types";
+import { getPosOrders } from "@/lib/data/pos-orders";
+import type { PosActionResult, PosOrder } from "@/lib/pos-types";
 
 export interface PosCheckoutInput {
   eventId: string;
@@ -47,4 +48,14 @@ export async function checkoutPosOrder(input: PosCheckoutInput): Promise<PosChec
   revalidatePath("/pos/admin/reports");
 
   return { success: true, message: "結帳完成", orderNumber: data as string };
+}
+
+// POS 前台「退貨」搜尋用：依訂單編號局部比對，不限定繪師/活動——小幫手可能要處理
+// 到別攤或別場活動的訂單，只要有登入就能查得到，之後照樣走同一套 processReturn。
+export async function searchPosOrdersByOrderNumber(query: string): Promise<PosOrder[]> {
+  const staff = await getCurrentStaff();
+  if (!staff) return [];
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  return getPosOrders({ orderNumber: trimmed, limit: 10 });
 }

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PosStaffAccount } from "@/lib/data/pos-staff";
-import type { PosStaffRole } from "@/lib/pos-auth";
+import { canManageStaffTarget, type PosStaffRole } from "@/lib/pos-roles";
 import { createStaffAccount, setStaffActive, resetStaffPassword, deleteStaffAccount } from "@/lib/actions/pos-staff";
 import { GlassCard } from "@/components/pos/GlassCard";
 import { GlowButton } from "@/components/pos/GlowButton";
@@ -16,10 +16,10 @@ const ROLE_LABEL: Record<PosStaffRole, string> = {
 
 export function PosStaffAdmin({
   accounts,
-  canManageAll,
+  currentRole,
 }: {
   accounts: PosStaffAccount[];
-  canManageAll: boolean;
+  currentRole: PosStaffRole;
 }) {
   const router = useRouter();
   const [username, setUsername] = useState("");
@@ -29,7 +29,9 @@ export function PosStaffAdmin({
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const availableRoles: PosStaffRole[] = canManageAll ? ["super_admin", "sub_admin", "staff"] : ["sub_admin", "staff"];
+  const availableRoles: PosStaffRole[] = canManageStaffTarget(currentRole, "super_admin")
+    ? ["super_admin", "sub_admin", "staff"]
+    : ["sub_admin", "staff"];
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -124,34 +126,39 @@ export function PosStaffAdmin({
       </GlassCard>
 
       <div className="flex flex-col gap-2">
-        {accounts.map((account) => (
-          <GlassCard key={account.id} className="flex items-center justify-between gap-3">
-            <div className="flex-1">
-              <p className="font-semibold">
-                {account.displayName} <span className="text-xs text-[var(--pos-text-muted)]">@{account.username}</span>
-              </p>
-              <p className="text-xs" style={{ color: "var(--pos-gold)" }}>
-                {ROLE_LABEL[account.role]}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 text-sm">
-              <span style={{ color: account.isActive ? "var(--pos-gold)" : undefined }} className={account.isActive ? "" : "text-[var(--pos-text-muted)]"}>
-                {account.isActive ? "啟用中" : "已停用"}
-              </span>
-              <button onClick={() => toggleActive(account)} className="pos-input px-3 py-1.5 text-xs">
-                {account.isActive ? "停用" : "啟用"}
-              </button>
-              <button onClick={() => handleResetPassword(account.id)} className="pos-input px-3 py-1.5 text-xs">
-                重設密碼
-              </button>
-              {canManageAll && (
-                <button onClick={() => remove(account.id)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300">
-                  刪除
-                </button>
-              )}
-            </div>
-          </GlassCard>
-        ))}
+        {accounts.map((account) => {
+          const canManage = canManageStaffTarget(currentRole, account.role);
+          return (
+            <GlassCard key={account.id} className="flex items-center justify-between gap-3">
+              <div className="flex-1">
+                <p className="font-semibold">
+                  {account.displayName} <span className="text-xs text-[var(--pos-text-muted)]">@{account.username}</span>
+                </p>
+                <p className="text-xs" style={{ color: "var(--pos-gold)" }}>
+                  {ROLE_LABEL[account.role]}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 text-sm">
+                <span style={{ color: account.isActive ? "var(--pos-gold)" : undefined }} className={account.isActive ? "" : "text-[var(--pos-text-muted)]"}>
+                  {account.isActive ? "啟用中" : "已停用"}
+                </span>
+                {canManage && (
+                  <>
+                    <button onClick={() => toggleActive(account)} className="pos-input px-3 py-1.5 text-xs">
+                      {account.isActive ? "停用" : "啟用"}
+                    </button>
+                    <button onClick={() => handleResetPassword(account.id)} className="pos-input px-3 py-1.5 text-xs">
+                      重設密碼
+                    </button>
+                    <button onClick={() => remove(account.id)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300">
+                      刪除
+                    </button>
+                  </>
+                )}
+              </div>
+            </GlassCard>
+          );
+        })}
       </div>
     </div>
   );

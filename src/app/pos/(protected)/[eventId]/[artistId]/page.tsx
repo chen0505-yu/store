@@ -4,9 +4,11 @@ import { getPosEventById } from "@/lib/data/pos-events";
 import { getArtistById } from "@/lib/data/pos-artists";
 import { getSellableProductGroupsByArtist } from "@/lib/data/pos-products";
 import { getActiveFreebieRulesByArtist } from "@/lib/data/pos-freebies";
+import { getPosOrders } from "@/lib/data/pos-orders";
 import { formatEventLabel } from "@/lib/pos-types";
 import { PosTopBar } from "@/components/pos/PosTopBar";
 import { PosCashierView } from "@/components/pos/PosCashierView";
+import { PosCashierReturnFlow } from "@/components/pos/PosCashierReturnFlow";
 
 export default async function PosCashierPage({
   params,
@@ -20,9 +22,10 @@ export default async function PosCashierPage({
   const [event, artist] = await Promise.all([getPosEventById(eventId), getArtistById(artistId)]);
   if (!event || !artist || artist.eventId !== eventId) notFound();
 
-  const [groups, freebieRules] = await Promise.all([
+  const [groups, freebieRules, recentOrders] = await Promise.all([
     getSellableProductGroupsByArtist(artistId),
     getActiveFreebieRulesByArtist(artistId),
+    getPosOrders({ eventId, artistId, limit: 20 }),
   ]);
 
   return (
@@ -32,6 +35,7 @@ export default async function PosCashierPage({
         title={`${formatEventLabel(event)}｜${artist.name}`}
         backHref={`/pos/${eventId}`}
         backLabel="選擇繪師"
+        extra={<PosCashierReturnFlow recentOrders={recentOrders} />}
       />
       <PosCashierView
         eventId={eventId}

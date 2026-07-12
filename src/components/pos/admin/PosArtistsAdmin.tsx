@@ -25,6 +25,12 @@ export function PosArtistsAdmin({
   const [editName, setEditName] = useState("");
   const [editEventId, setEditEventId] = useState("");
   const [isPending, startTransition] = useTransition();
+  // 預設只顯示啟用中的繪師，封存（已停用）的繪師收起來，避免列表被過去活動的
+  // 舊繪師塞滿；點「顯示封存」可以看到並重新啟用。
+  const [showArchived, setShowArchived] = useState(false);
+
+  const visibleArtists = showArchived ? artists : artists.filter((a) => a.isActive);
+  const archivedCount = artists.filter((a) => !a.isActive).length;
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -62,10 +68,13 @@ export function PosArtistsAdmin({
     });
   }
 
-  function remove(id: string) {
-    if (!confirm("確定要刪除這位繪師嗎？（底下的商品、訂單也會一併刪除）")) return;
+  function remove(artist: PosArtistWithEventName) {
+    const confirmMessage = artist.hasOrders
+      ? "這位繪師已經有訂單，無法真正刪除，會改為封存（不會出現在 POS 前台與商品管理，但訂單/報表仍查得到）。確定要封存嗎？"
+      : "確定要刪除這位繪師嗎？（底下的商品會一併刪除）";
+    if (!confirm(confirmMessage)) return;
     startTransition(async () => {
-      const result = await deletePosArtist(id);
+      const result = await deletePosArtist(artist.id);
       setMessage(result.message);
       router.refresh();
     });
@@ -113,8 +122,19 @@ export function PosArtistsAdmin({
         {message && <p className="mt-2 text-sm text-[var(--pos-gold)]">{message}</p>}
       </GlassCard>
 
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowArchived((v) => !v)}
+          className="pos-input px-3 py-1.5 text-xs"
+        >
+          {showArchived ? "隱藏封存" : "顯示封存"}
+          {archivedCount > 0 ? `（${archivedCount}）` : ""}
+        </button>
+      </div>
+
       <div className="flex flex-col gap-2">
-        {artists.map((artist) => (
+        {visibleArtists.map((artist) => (
           <GlassCard key={artist.id} className="flex items-center justify-between gap-3">
             {editingId === artist.id ? (
               <div className="flex flex-1 flex-wrap items-end gap-3">
@@ -162,14 +182,18 @@ export function PosArtistsAdmin({
                 </button>
               )}
               {canDelete && (
-                <button onClick={() => remove(artist.id)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300">
-                  刪除
+                <button onClick={() => remove(artist)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300">
+                  {artist.hasOrders ? "封存" : "刪除"}
                 </button>
               )}
             </div>
           </GlassCard>
         ))}
-        {artists.length === 0 && <p className="text-sm text-[var(--pos-text-muted)]">尚未建立任何繪師</p>}
+        {visibleArtists.length === 0 && (
+          <p className="text-sm text-[var(--pos-text-muted)]">
+            {showArchived ? "尚未建立任何繪師" : "沒有啟用中的繪師（可能都被封存了，點上面「顯示封存」查看）"}
+          </p>
+        )}
       </div>
     </div>
   );

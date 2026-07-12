@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentStaff, canManageAllData } from "@/lib/pos-auth";
+import { getCurrentStaff } from "@/lib/pos-auth";
 import { getAllStaffAccounts } from "@/lib/data/pos-staff";
 import { PosStaffAdmin } from "@/components/pos/admin/PosStaffAdmin";
 
@@ -8,5 +8,5 @@ export default async function PosAdminStaffPage() {
   if (!staff) redirect("/pos/login");
   const accounts = await getAllStaffAccounts();
 
-  return <PosStaffAdmin accounts={accounts} canManageAll={canManageAllData(staff.role)} />;
+  return <PosStaffAdmin accounts={accounts} currentRole={staff.role} />;
 }

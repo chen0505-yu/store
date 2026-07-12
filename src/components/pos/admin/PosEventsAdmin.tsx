@@ -25,6 +25,7 @@ export function PosEventsAdmin({ events, canDelete }: { events: PosEvent[]; canD
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFields, setEditFields] = useState<EventFormFields>(emptyFields());
   const [isPending, startTransition] = useTransition();
+  const [deleteTarget, setDeleteTarget] = useState<PosEvent | null>(null);
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -76,11 +77,13 @@ export function PosEventsAdmin({ events, canDelete }: { events: PosEvent[]; canD
     });
   }
 
-  function remove(id: string) {
-    if (!confirm("確定要刪除這個活動嗎？（底下的繪師、商品、訂單也會一併刪除）")) return;
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
     startTransition(async () => {
       const result = await deletePosEvent(id);
       setMessage(result.message);
+      if (result.success) setDeleteTarget(null);
       router.refresh();
     });
   }
@@ -204,8 +207,8 @@ export function PosEventsAdmin({ events, canDelete }: { events: PosEvent[]; canD
                 </button>
               )}
               {canDelete && (
-                <button onClick={() => remove(event.id)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300">
-                  刪除
+                <button onClick={() => setDeleteTarget(event)} className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300">
+                  刪除活動
                 </button>
               )}
             </div>
@@ -213,6 +216,50 @@ export function PosEventsAdmin({ events, canDelete }: { events: PosEvent[]; canD
         ))}
         {events.length === 0 && <p className="text-sm text-[var(--pos-text-muted)]">尚未建立任何活動</p>}
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <GlassCard className="w-full max-w-md border-red-400/40">
+            <p className="mb-2 text-2xl">⚠️</p>
+            <h3 className="mb-3 text-lg font-semibold text-red-400">
+              此操作會永久刪除「{deleteTarget.name}
+              {deleteTarget.dayLabel ? ` ${deleteTarget.dayLabel}` : ""}」的所有資料：
+            </h3>
+            <ul className="mb-4 list-disc space-y-1 pl-5 text-sm text-[var(--pos-text-muted)]">
+              <li>活動</li>
+              <li>商品</li>
+              <li>商品分類</li>
+              <li>繪師</li>
+              <li>訂單</li>
+              <li>滿額贈品</li>
+              <li>庫存</li>
+              <li>Excel 資料</li>
+            </ul>
+            <p className="mb-4 text-sm" style={{ color: "var(--pos-gold-strong)" }}>
+              請確認已完成活動結算與 Excel 匯出備份。這個動作無法復原。
+            </p>
+            {message && <p className="mb-3 text-sm text-red-400">{message}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="pos-input flex-1 py-2.5 text-sm"
+                disabled={isPending}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={isPending}
+                className="flex-1 rounded-lg bg-red-500/90 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {isPending ? "刪除中..." : "永久刪除"}
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+      )}
     </div>
   );
 }

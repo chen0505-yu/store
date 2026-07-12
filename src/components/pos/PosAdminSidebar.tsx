@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { PosUserMenu } from "@/components/pos/PosUserMenu";
 
 const NAV_ITEMS = [
   { href: "/pos/admin", label: "Dashboard" },
@@ -24,7 +25,9 @@ export function PosAdminSidebar({ displayName }: { displayName: string }) {
       <p className="mb-1 text-lg font-bold" style={{ color: "var(--pos-gold)" }}>
         POS 後台
       </p>
-      <p className="mb-4 text-xs text-[var(--pos-text-muted)]">{displayName}</p>
+      <div className="mb-4 text-xs">
+        <PosUserMenu displayName={displayName} />
+      </div>
       <nav className="flex flex-col gap-1 text-sm">
         {NAV_ITEMS.map((item) => {
           const isActive = pathname === item.href;

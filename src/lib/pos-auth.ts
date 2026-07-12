@@ -1,9 +1,14 @@
 import { cookies } from "next/headers";
 import { getPosSupabaseServerClient as getSupabaseServerClient } from "@/lib/supabase/pos-server";
+import type { PosStaffRole } from "@/lib/pos-roles";
+
+// 角色型別/純權限判斷函式實際定義在 pos-roles.ts（不依賴 next/headers，Client
+// Component 也能安全 import）。這裡重新 export 出去，Server Component / Server
+// Action 沿用 "@/lib/pos-auth" 這個既有路徑就好，不用全部改 import 路徑。
+export type { PosStaffRole } from "@/lib/pos-roles";
+export { canManageAllData, canAccessPosAdmin, canManageStaffTarget } from "@/lib/pos-roles";
 
 export const STAFF_SESSION_COOKIE = "litan_pos_staff_session";
-
-export type PosStaffRole = "super_admin" | "sub_admin" | "staff";
 
 export interface CurrentStaff {
   id: string;
@@ -44,12 +49,4 @@ export async function getCurrentStaff(): Promise<CurrentStaff | null> {
     displayName: staff.display_name,
     role: staff.role as PosStaffRole,
   };
-}
-
-export function canManageAllData(role: PosStaffRole): boolean {
-  return role === "super_admin";
-}
-
-export function canAccessPosAdmin(role: PosStaffRole): boolean {
-  return role === "super_admin" || role === "sub_admin";
 }

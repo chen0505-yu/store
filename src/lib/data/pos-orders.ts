@@ -79,6 +79,8 @@ export interface PosOrderFilter {
   artistId?: string;
   dateFrom?: string; // yyyy-mm-dd
   dateTo?: string; // yyyy-mm-dd
+  orderNumber?: string; // 局部比對，給 POS 前台「輸入訂單編號搜尋」用
+  limit?: number;
 }
 
 export async function getPosOrders(filter: PosOrderFilter = {}): Promise<PosOrder[]> {
@@ -91,6 +93,8 @@ export async function getPosOrders(filter: PosOrderFilter = {}): Promise<PosOrde
   if (filter.artistId) query = query.eq("artist_id", filter.artistId);
   if (filter.dateFrom) query = query.gte("created_at", `${filter.dateFrom}T00:00:00`);
   if (filter.dateTo) query = query.lte("created_at", `${filter.dateTo}T23:59:59`);
+  if (filter.orderNumber) query = query.ilike("order_number", `%${filter.orderNumber}%`);
+  if (filter.limit) query = query.limit(filter.limit);
 
   const { data, error } = await query;
   if (error) {

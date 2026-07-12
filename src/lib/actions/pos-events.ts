@@ -89,7 +89,10 @@ export async function setPosEventActive(id: string, isActive: boolean): Promise<
   return { success: true, message: isActive ? "已設為目前活動" : "已停用活動" };
 }
 
-// 刪除活動屬於「刪除全部資料」層級操作，規格規定副管理員不可執行，僅超級管理員可以。
+// 刪除活動＝整場活動的資料全部永久清空（活動、繪師、商品、訂單、贈品、庫存），
+// 符合現場「結束活動 → Excel 匯出備份 → 整場清空 → 建立下一場」的流程，不保留歷史。
+// 屬於「刪除全部資料」層級操作，只有超級管理員可以執行；單一 RPC 交易完成，
+// 見 supabase/migrations/029_pos_event_cascade_delete.sql。
 export async function deletePosEvent(id: string): Promise<PosActionResult> {
   const staff = await getCurrentStaff();
   if (!staff || !canManageAllData(staff.role)) return { success: false, message: "沒有權限" };
@@ -97,9 +100,16 @@ export async function deletePosEvent(id: string): Promise<PosActionResult> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return { success: false, message: "尚未設定 Supabase" };
 
-  const { error } = await supabase.from("pos_events").delete().eq("id", id);
+  const { error } = await supabase.rpc("pos_delete_event_cascade", { p_event_id: id });
   if (error) return { success: false, message: error.message };
 
   revalidatePosAdmin();
-  return { success: true, message: "已刪除活動" };
+  revalidatePath("/pos/admin/artists");
+  revalidatePath("/pos/admin/products");
+  revalidatePath("/pos/admin/freebies");
+  revalidatePath("/pos/admin/orders");
+  revalidatePath("/pos/admin/settlement");
+  revalidatePath("/pos/admin/stats");
+  revalidatePath("/pos/admin/reports");
+  return { success: true, message: "已永久刪除這場活動的所有資料" };
 }

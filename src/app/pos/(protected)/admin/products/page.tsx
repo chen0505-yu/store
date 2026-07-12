@@ -13,7 +13,12 @@ export default async function PosAdminProductsPage({
   const staff = await getCurrentStaff();
   if (!staff) redirect("/pos/login");
   const { artistId } = await searchParams;
-  const [artists, groups] = await Promise.all([getAllArtistsWithEventName(), getAllProductGroupsWithArtistName()]);
+  const [allArtists, allGroups] = await Promise.all([getAllArtistsWithEventName(), getAllProductGroupsWithArtistName()]);
+  // 封存（停用）的繪師預設不出現在商品管理：繪師篩選清單跟商品列表都排除，
+  // 商品資料本身不會被刪除，繪師重新啟用後就會再出現。
+  const artists = allArtists.filter((a) => a.isActive);
+  const activeArtistIds = new Set(artists.map((a) => a.id));
+  const groups = allGroups.filter((g) => activeArtistIds.has(g.artistId));
 
   return (
     <div className="flex flex-col gap-6">
