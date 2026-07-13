@@ -13,6 +13,7 @@ import {
 import { checkoutPosOrder } from "@/lib/actions/pos-orders";
 import { GlassCard } from "@/components/pos/GlassCard";
 import { GlowButton } from "@/components/pos/GlowButton";
+import { PosFreebiePreviewButton } from "@/components/pos/PosFreebiePreviewButton";
 
 // 一個「贈品名額」：某條規則賺到的其中一次資格，小幫手可以從候選裡選一款，也可以跳過不拿。
 interface FreebieSlot {
@@ -253,7 +254,10 @@ export function PosCashierView({
   return (
     <div className="flex flex-col gap-4 pb-20 md:flex-row md:pb-0">
       <div className="flex-1">
-        <h2 className="mb-3 text-lg font-semibold">{artistName} 的商品</h2>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">{artistName} 的商品</h2>
+          <PosFreebiePreviewButton artistName={artistName} freebieRules={freebieRules} groups={groups} />
+        </div>
         {successMessage && (
           <p className="mb-3 rounded-lg px-3 py-2 text-sm" style={{ background: "rgba(233,196,106,0.12)", color: "var(--pos-gold-strong)" }}>
             {successMessage}

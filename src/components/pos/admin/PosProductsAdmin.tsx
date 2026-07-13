@@ -82,6 +82,14 @@ export function PosProductsAdmin({
     setOrderedGroups(visibleGroups);
   }
 
+  function commitReorder(next: PosProductGroupWithArtistName[]) {
+    setOrderedGroups(next);
+    startTransition(async () => {
+      await reorderPosProductGroups(selectedArtistId, next.map((g) => g.id));
+      router.refresh();
+    });
+  }
+
   function handleDrop(dropIndex: number) {
     if (dragIndex === null || dragIndex === dropIndex) {
       setDragIndex(null);
@@ -90,12 +98,17 @@ export function PosProductsAdmin({
     const next = [...orderedGroups];
     const [moved] = next.splice(dragIndex, 1);
     next.splice(dropIndex, 0, moved);
-    setOrderedGroups(next);
     setDragIndex(null);
-    startTransition(async () => {
-      await reorderPosProductGroups(selectedArtistId, next.map((g) => g.id));
-      router.refresh();
-    });
+    commitReorder(next);
+  }
+
+  // 拖曳在平板不好操作時的備用方案：直接交換相鄰兩筆的位置。
+  function moveGroup(index: number, direction: -1 | 1) {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= orderedGroups.length) return;
+    const next = [...orderedGroups];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    commitReorder(next);
   }
 
   function handleStockSave(groupId: string, stockQuantity: number) {
@@ -332,7 +345,9 @@ export function PosProductsAdmin({
       </GlassCard>
 
       {selectedArtistId && orderedGroups.length > 1 && (
-        <p className="text-xs text-[var(--pos-text-muted)]">拖曳卡片可以調整順序，POS 收銀畫面會照這個順序顯示商品。</p>
+        <p className="text-xs text-[var(--pos-text-muted)]">
+          拖曳卡片可以調整順序（平板不好拖曳時可改用 ▲▼ 按鈕），POS 收銀畫面會照這個順序顯示商品。
+        </p>
       )}
 
       <div
@@ -352,6 +367,10 @@ export function PosProductsAdmin({
             onEdit={() => startEdit(group)}
             onDelete={() => remove(group.id)}
             onStockSave={(stock) => handleStockSave(group.id, stock)}
+            onMoveUp={selectedArtistId && index > 0 ? () => moveGroup(index, -1) : undefined}
+            onMoveDown={
+              selectedArtistId && index < orderedGroups.length - 1 ? () => moveGroup(index, 1) : undefined
+            }
           />
         ))}
         {orderedGroups.length === 0 && (
@@ -374,6 +393,8 @@ function ProductListItem({
   onEdit,
   onDelete,
   onStockSave,
+  onMoveUp,
+  onMoveDown,
 }: {
   group: PosProductGroupWithArtistName;
   canDelete: boolean;
@@ -384,6 +405,8 @@ function ProductListItem({
   onEdit: () => void;
   onDelete: () => void;
   onStockSave: (stock: number) => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   const withVariants = groupHasVariants(group);
   const [stockInput, setStockInput] = useState(String(group.stockQuantity));
@@ -402,7 +425,29 @@ function ProductListItem({
       onDrop={onDrop}
       className={`flex gap-3 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
     >
-      {draggable && <span className="select-none text-[var(--pos-text-muted)]">⋮⋮</span>}
+      {draggable && (
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          <span className="hidden select-none text-[var(--pos-text-muted)] sm:inline">⋮⋮</span>
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!onMoveUp}
+            aria-label="上移"
+            className="pos-input h-7 w-7 rounded text-xs disabled:opacity-30"
+          >
+            ▲
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!onMoveDown}
+            aria-label="下移"
+            className="pos-input h-7 w-7 rounded text-xs disabled:opacity-30"
+          >
+            ▼
+          </button>
+        </div>
+      )}
       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/20">
         {group.imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
