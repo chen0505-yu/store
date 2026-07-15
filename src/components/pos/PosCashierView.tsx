@@ -263,7 +263,7 @@ export function PosCashierView({
             {successMessage}
           </p>
         )}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
           {groups.map((group) => {
             const soldOut = isGroupSoldOut(group);
             const stock = getEffectiveStock(group);
@@ -273,14 +273,14 @@ export function PosCashierView({
                 type="button"
                 disabled={soldOut}
                 onClick={() => addToCart(group)}
-                className={`pos-glass flex flex-col overflow-hidden p-0 text-left ${
+                className={`pos-glass flex aspect-square flex-col overflow-hidden p-0 text-left ${
                   soldOut ? "pos-card-soldout cursor-not-allowed" : "cursor-pointer hover:scale-[1.02]"
                 } transition`}
               >
-                {/* 圖片區固定正方形（跟卡片寬度綁定），overflow-hidden 是關鍵：
-                    flex item 預設 min-height:auto 會用圖片原始尺寸當底線，蓋掉 aspect-square，
-                    加了 overflow-hidden 才能保證不管圖片多長多寬，這一區永遠是正方形。 */}
-                <div className="flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden bg-black/30">
+                {/* 圖片區佔卡片約 78% 高度（flex-[4] 對 flex-[1]），文字區約 22%。
+                    整張卡片固定 aspect-square，欄數用 grid-cols 控制（手機2／平板4／桌機5），
+                    overflow-hidden 保證圖片區不會被圖片原始尺寸撐開。 */}
+                <div className="flex w-full flex-[4] items-center justify-center overflow-hidden bg-black/30">
                   {group.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -292,20 +292,21 @@ export function PosCashierView({
                     <span className="text-xs text-[var(--pos-text-muted)]">無圖片</span>
                   )}
                 </div>
-                <div className="flex h-[100px] shrink-0 flex-col justify-between overflow-hidden p-2">
-                  <span className="line-clamp-1 text-sm font-medium">{group.name}</span>
-                  <span className="text-sm" style={{ color: "var(--pos-gold)" }}>
-                    NT$ {group.price}
-                  </span>
-                  <span className="line-clamp-1 text-xs text-[var(--pos-text-muted)]">
-                    {soldOut ? <span className="text-red-400">售完</span> : `庫存 ${stock}`}
-                  </span>
-                  <span
-                    className="line-clamp-1 text-xs"
-                    style={{ color: group.note ? "var(--pos-gold-strong)" : "transparent" }}
-                  >
-                    {group.note ? `⚠ ${group.note}` : "-"}
-                  </span>
+                <div className="flex min-h-0 flex-[1] flex-col justify-center gap-0.5 overflow-hidden px-2 py-1">
+                  <span className="line-clamp-2 text-sm leading-tight font-medium">{group.name}</span>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-sm font-semibold" style={{ color: "var(--pos-gold)" }}>
+                      NT$ {group.price}
+                    </span>
+                    <span className="shrink-0 text-xs text-[var(--pos-text-muted)]">
+                      {soldOut ? <span className="text-red-400">售完</span> : `庫存 ${stock}`}
+                    </span>
+                  </div>
+                  {group.note && (
+                    <span className="line-clamp-1 text-xs" style={{ color: "var(--pos-gold-strong)" }}>
+                      ⚠ {group.note}
+                    </span>
+                  )}
                 </div>
               </button>
             );
