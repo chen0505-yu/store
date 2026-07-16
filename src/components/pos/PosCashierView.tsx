@@ -273,14 +273,15 @@ export function PosCashierView({
                 type="button"
                 disabled={soldOut}
                 onClick={() => addToCart(group)}
-                className={`pos-glass flex aspect-square flex-col overflow-hidden p-0 text-left ${
+                className={`pos-glass flex flex-col overflow-hidden p-0 text-left ${
                   soldOut ? "pos-card-soldout cursor-not-allowed" : "cursor-pointer hover:scale-[1.02]"
                 } transition`}
               >
-                {/* 圖片區佔卡片約 78% 高度（flex-[4] 對 flex-[1]），文字區約 22%。
-                    整張卡片固定 aspect-square，欄數用 grid-cols 控制（手機2／平板4／桌機5），
-                    overflow-hidden 保證圖片區不會被圖片原始尺寸撐開。 */}
-                <div className="flex w-full flex-[4] items-center justify-center overflow-hidden bg-black/30">
+                {/* 圖片區用 aspect-square 固定成「跟卡片同寬的正方形」（不是跟卡片總高綁定），
+                    下面文字區另外給固定高度 h-[76px]（夠放兩行商品名稱＋一行金額/庫存，不會被擠壓裁切）。
+                    這兩塊高度相加，同一個中斷點（欄數）下每張卡片還是等寬等高；只是整張卡片
+                    不再強制是正方形——這是刻意的，商品名稱不能被裁掉，比卡片正方形更優先。 */}
+                <div className="flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden bg-black/30">
                   {group.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -292,7 +293,7 @@ export function PosCashierView({
                     <span className="text-xs text-[var(--pos-text-muted)]">無圖片</span>
                   )}
                 </div>
-                <div className="flex min-h-0 flex-[1] flex-col justify-center gap-0.5 overflow-hidden px-2 py-1">
+                <div className="flex h-[76px] shrink-0 flex-col justify-center gap-1 overflow-hidden px-2 py-1.5">
                   <span className="line-clamp-2 text-sm leading-tight font-medium">{group.name}</span>
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-sm font-semibold" style={{ color: "var(--pos-gold)" }}>
@@ -302,11 +303,6 @@ export function PosCashierView({
                       {soldOut ? <span className="text-red-400">售完</span> : `庫存 ${stock}`}
                     </span>
                   </div>
-                  {group.note && (
-                    <span className="line-clamp-1 text-xs" style={{ color: "var(--pos-gold-strong)" }}>
-                      ⚠ {group.note}
-                    </span>
-                  )}
                 </div>
               </button>
             );
