@@ -33,9 +33,13 @@ export async function uploadImage(formData: FormData, folder: string): Promise<U
   const path = `${folder}/${crypto.randomUUID()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
+  // cacheControl 讓 Supabase Storage 回應帶上 max-age，瀏覽器才會真正快取圖片
+  // （預設是 no-cache，每次都要重新跟伺服器確認，即使圖片內容從沒變過）。
+  // 檔名用 randomUUID，同一個網址的圖片內容永遠不會變，可以放心長期快取。
   const { error } = await supabase.storage.from(BUCKET).upload(path, buffer, {
     contentType: file.type,
     upsert: false,
+    cacheControl: "31536000",
   });
 
   if (error) {

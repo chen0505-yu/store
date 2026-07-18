@@ -59,3 +59,12 @@ export async function searchPosOrdersByOrderNumber(query: string): Promise<PosOr
   if (!trimmed) return [];
   return getPosOrders({ orderNumber: trimmed, limit: 10 });
 }
+
+// 退貨面板打開時才查「最近訂單」，不要一進收銀畫面就先查——這份資料多數時候
+// 完全用不到（小幫手很少按退貨），之前寫在收銀頁的 server component 裡每次
+// 進頁面都先查一次，是白白浪費的一次查詢。
+export async function getRecentPosOrders(eventId: string, artistId: string): Promise<PosOrder[]> {
+  const staff = await getCurrentStaff();
+  if (!staff) return [];
+  return getPosOrders({ eventId, artistId, limit: 20 });
+}

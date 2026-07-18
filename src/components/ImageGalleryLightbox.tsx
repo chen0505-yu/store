@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 
 // 商品品項圖片放大鏡：縮圖用第一張圖，點開後可以左右切換所有圖片。
+// 縮圖走 next/image：自動轉 WebP/AVIF、縮到實際顯示尺寸、預設 lazy load —— 這是全站
+// 商品圖最主要的效能問題（原圖沒壓縮、常常好幾 MB，卡片卻只需要一兩百像素）。
 export function ImageGalleryLightbox({
   images,
   alt,
@@ -25,12 +28,17 @@ export function ImageGalleryLightbox({
 
   return (
     <>
-      <button type="button" onClick={() => setOpenIndex(0)} className="block shrink-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+      <button
+        type="button"
+        onClick={() => setOpenIndex(0)}
+        className={`relative block shrink-0 overflow-hidden ${thumbnailClassName}`}
+      >
+        <Image
           src={images[0]}
           alt={alt}
-          className={`${thumbnailClassName} cursor-zoom-in transition hover:opacity-90`}
+          fill
+          sizes="96px"
+          className="cursor-zoom-in object-cover transition hover:opacity-90"
         />
       </button>
 

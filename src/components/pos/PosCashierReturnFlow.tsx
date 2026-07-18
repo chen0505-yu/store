@@ -3,19 +3,24 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PosOrder } from "@/lib/pos-types";
-import { searchPosOrdersByOrderNumber } from "@/lib/actions/pos-orders";
+import { searchPosOrdersByOrderNumber, getRecentPosOrders } from "@/lib/actions/pos-orders";
 import { GlassCard } from "@/components/pos/GlassCard";
 import { PosReturnOrderPanel } from "@/components/pos/PosReturnOrderPanel";
 
 // POS 前台直接退貨：現場不方便每次都跑後台訂單管理頁面。點選退貨 → 從最近訂單挑
 // 或輸入訂單編號搜尋 → 選到訂單 → 全退/部分退 → 完成，退貨的實際邏輯完全沿用
 // PosReturnOrderPanel／processReturn（後台退貨用的同一套），沒有另外寫一份。
-export function PosCashierReturnFlow({ recentOrders }: { recentOrders: PosOrder[] }) {
+//
+// 最近訂單刻意不當作 prop 從收銀頁 server component 直接帶進來——多數時候小幫手
+// 整段收銀都不會按退貨，那份查詢就是白費，改成點退貨才即時查。
+export function PosCashierReturnFlow({ eventId, artistId }: { eventId: string; artistId: string }) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<PosOrder[] | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<PosOrder | null>(null);
+  const [recentOrders, setRecentOrders] = useState<PosOrder[]>([]);
+  const [isLoadingRecent, startLoadRecent] = useTransition();
   const [isSearching, startSearch] = useTransition();
 
   function open() {
@@ -23,6 +28,9 @@ export function PosCashierReturnFlow({ recentOrders }: { recentOrders: PosOrder[
     setSearchResults(null);
     setSelectedOrder(null);
     setIsOpen(true);
+    startLoadRecent(async () => {
+      setRecentOrders(await getRecentPosOrders(eventId, artistId));
+    });
   }
 
   function search() {
@@ -99,7 +107,7 @@ export function PosCashierReturnFlow({ recentOrders }: { recentOrders: PosOrder[
                   ))}
                   {listToShow.length === 0 && (
                     <p className="text-sm text-[var(--pos-text-muted)]">
-                      {searchResults ? "找不到符合的訂單" : "這位繪師還沒有訂單"}
+                      {searchResults ? "找不到符合的訂單" : isLoadingRecent ? "載入中..." : "這位繪師還沒有訂單"}
                     </p>
                   )}
                 </div>

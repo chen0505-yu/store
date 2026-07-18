@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import type { PosArtistWithEventName } from "@/lib/data/pos-artists";
 import type { PosProductGroupWithArtistName } from "@/lib/data/pos-products";
 import {
@@ -448,10 +449,9 @@ function ProductListItem({
           </button>
         </div>
       )}
-      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/20">
+      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-black/20">
         {group.imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={group.imageUrl} alt={group.name} className="h-full w-full object-cover" />
+          <Image src={group.imageUrl} alt={group.name} fill sizes="64px" className="object-cover" />
         )}
       </div>
       <div className="flex-1">

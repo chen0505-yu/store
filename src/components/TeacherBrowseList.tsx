@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import type { PreorderTeacherSummary } from "@/lib/data/teacher-shop";
 import { EmptyState } from "@/components/EmptyState";
 
@@ -39,8 +40,13 @@ export function TeacherBrowseList({ teachers }: { teachers: PreorderTeacherSumma
             >
               <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-pink-100 to-purple-100">
                 {teacher.coverImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={teacher.coverImage} alt={teacher.teacherName} className="h-full w-full object-cover" />
+                  <Image
+                    src={teacher.coverImage}
+                    alt={teacher.teacherName}
+                    fill
+                    sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-4xl">🦝</div>
                 )}

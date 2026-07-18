@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import type { PosProductGroup, PosCartLine, PosFreebieRule } from "@/lib/pos-types";
 import { getEffectiveStock, isGroupSoldOut } from "@/lib/pos-product-stock";
 import {
@@ -281,13 +282,14 @@ export function PosCashierView({
                     下面文字區另外給固定高度 h-[76px]（夠放兩行商品名稱＋一行金額/庫存，不會被擠壓裁切）。
                     這兩塊高度相加，同一個中斷點（欄數）下每張卡片還是等寬等高；只是整張卡片
                     不再強制是正方形——這是刻意的，商品名稱不能被裁掉，比卡片正方形更優先。 */}
-                <div className="flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden bg-black/30">
+                <div className="relative flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden bg-black/30">
                   {group.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                       src={group.imageUrl}
                       alt={group.name}
-                      className="h-full w-full object-contain object-center"
+                      fill
+                      sizes="(min-width: 1024px) 220px, (min-width: 640px) 25vw, 45vw"
+                      className="object-contain object-center"
                     />
                   ) : (
                     <span className="text-xs text-[var(--pos-text-muted)]">無圖片</span>
