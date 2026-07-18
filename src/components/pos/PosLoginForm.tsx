@@ -1,12 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { loginStaff } from "@/lib/actions/pos-auth";
 import { GlowButton } from "@/components/pos/GlowButton";
 
 export function PosLoginForm() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -18,8 +16,12 @@ export function PosLoginForm() {
     startTransition(async () => {
       const result = await loginStaff(username, password);
       if (result.success) {
-        router.push("/pos");
-        router.refresh();
+        // 故意用整頁導航（不是 router.push + router.refresh）：登入後馬上要讀到剛剛
+        // Server Action 回應設下的 session cookie，平板上的 Safari／Chrome 在「軟導航」
+        // （client-side router）下處理剛寫入的 cookie 有時會有時序落差，導致下一頁的
+        // getCurrentStaff() 讀不到 cookie、被導回登入頁。整頁導航會強制瀏覽器帶著最新
+        // 的 cookie 重新發一次請求，徹底避開這個問題。
+        window.location.href = "/pos";
       } else {
         setMessage(result.message);
       }
