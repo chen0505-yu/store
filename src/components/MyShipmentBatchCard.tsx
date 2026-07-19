@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { MyShipmentOrder } from "@/lib/data/my-shipments";
-import { setShipmentMarketplaceOrderNumber } from "@/lib/actions/shipments";
+import { completeShipment, setShipmentBuyerNote, setShipmentMarketplaceOrderNumber } from "@/lib/actions/shipments";
 import { getDisplayShipmentStatusLabel } from "@/lib/shipment-status";
 import { ProgressStepper } from "@/components/ProgressStepper";
 import { getShipmentProgressSteps, getShipmentProgressIndex } from "@/lib/progress";
@@ -15,8 +15,29 @@ function formatTime(iso: string) {
 
 export function MyShipmentBatchCard({ batch }: { batch: MyShipmentOrder }) {
   const [value, setValue] = useState(batch.marketplaceOrderNumber ?? "");
+  const [noteValue, setNoteValue] = useState(batch.buyerNote ?? "");
+  const [noteMessage, setNoteMessage] = useState<string | null>(null);
+  const [completeMessage, setCompleteMessage] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isNotePending, startNoteTransition] = useTransition();
+  const [isCompletePending, startCompleteTransition] = useTransition();
+  const isFinal = batch.status === "completed";
+
+  function handleSaveNote() {
+    startNoteTransition(async () => {
+      const result = await setShipmentBuyerNote(batch.id, noteValue);
+      setNoteMessage(result.message);
+    });
+  }
+
+  function handleComplete() {
+    if (!window.confirm("確認已收到商品，要標記此出貨訂單為完成嗎？")) return;
+    startCompleteTransition(async () => {
+      const result = await completeShipment(batch.id);
+      setCompleteMessage(result.message);
+    });
+  }
 
   const isEventPickup = batch.pickupMethod === "event_pickup";
   const canFillMarketplaceNumber =
@@ -38,7 +59,12 @@ export function MyShipmentBatchCard({ batch }: { batch: MyShipmentOrder }) {
     <div className="rounded-3xl bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs text-zinc-400">出貨訂單編號</p>
+          <div className="flex items-center gap-2 text-xs text-zinc-400">
+            <span>出貨訂單編號</span>
+            <span className="rounded-full bg-purple-50 px-2 py-0.5 text-purple-500">
+              {batch.shipmentType === "artist" ? "繪師預購" : "葴葴預購"}
+            </span>
+          </div>
           <p className="font-mono text-sm font-semibold text-purple-600">{batch.shipmentNumber}</p>
           <p className="mt-1 text-xs text-zinc-400">
             平台訂單編號：{batch.orderNumbers.join("、")}
@@ -91,6 +117,43 @@ export function MyShipmentBatchCard({ batch }: { batch: MyShipmentOrder }) {
       </ul>
 
       <p className="mt-2 text-xs text-zinc-400">建立時間：{formatTime(batch.createdAt)}</p>
+      {batch.completedAt && (
+        <p className="mt-1 text-xs text-zinc-400">
+          完成時間：{formatTime(batch.completedAt)}
+          {batch.completedByRole === "member" ? "（您本人完成）" : "（賣家完成）"}
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-col gap-2 rounded-2xl bg-purple-50/40 p-3">
+        <label className="text-xs font-semibold text-purple-600">備註（可自行新增／修改，賣家可查看）</label>
+        <textarea
+          value={noteValue}
+          onChange={(e) => setNoteValue(e.target.value)}
+          rows={2}
+          placeholder="例如：麻煩包裝加強一下"
+          className="rounded-lg border border-purple-200 px-3 py-2 text-sm"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSaveNote}
+            disabled={isNotePending}
+            className="w-fit rounded-full bg-purple-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {isNotePending ? "儲存中..." : "儲存備註"}
+          </button>
+          {!isFinal && (
+            <button
+              onClick={handleComplete}
+              disabled={isCompletePending}
+              className="w-fit rounded-full bg-green-600 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {isCompletePending ? "處理中..." : "確認收到商品，完成訂單"}
+            </button>
+          )}
+        </div>
+        {noteMessage && <p className="text-xs text-purple-600">{noteMessage}</p>}
+        {completeMessage && <p className="text-xs text-purple-600">{completeMessage}</p>}
+      </div>
 
       {batch.bonusSelections.length > 0 && (
         <div className="mt-3 flex flex-col gap-1 rounded-2xl bg-purple-50/60 p-3">

@@ -43,6 +43,13 @@ export default async function MemberPage() {
           <p className="mt-1 text-sm text-white/80">查看匯款狀態與到貨進度</p>
         </Link>
         <Link
+          href="/member/artist-orders"
+          className="rounded-3xl bg-gradient-to-br from-fuchsia-400 to-purple-300 p-6 text-white shadow-md transition hover:-translate-y-1"
+        >
+          <h2 className="text-lg font-bold">我的繪師預購訂單</h2>
+          <p className="mt-1 text-sm text-white/80">查看匯款狀態與到貨進度</p>
+        </Link>
+        <Link
           href="/member/shipment-orders"
           className="rounded-3xl bg-gradient-to-br from-purple-300 to-pink-300 p-6 text-white shadow-md transition hover:-translate-y-1"
         >

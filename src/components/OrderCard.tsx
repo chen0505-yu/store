@@ -41,7 +41,10 @@ export function OrderCard({
   // 預購訂單的 order.status 建立後就固定是 pending_payment，直到出貨完成才會變 completed，
   // 不會跟著 paymentStatus 更新——同時顯示兩者會讓已匯款的訂單還掛著「待匯款」，誤導客人，
   // 所以預購訂單這裡只看 paymentStatus，不重複顯示這個已經過時的「待匯款」。
-  const showOrderStatusBadge = !(order.orderType === "preorder" && order.status === "pending_payment");
+  const showOrderStatusBadge = !(
+    (order.orderType === "preorder" || order.orderType === "artist") &&
+    order.status === "pending_payment"
+  );
   const supplementTotal = activeSupplementTotal(order);
   const remittedAmount = order.payment?.actualAmount ?? null;
   const underpaidAmount =
@@ -81,7 +84,8 @@ export function OrderCard({
         </p>
       )}
 
-      {order.orderType === "preorder" && order.preorderProgressIndex !== undefined && (
+      {(order.orderType === "preorder" || order.orderType === "artist") &&
+        order.preorderProgressIndex !== undefined && (
         <div className="mt-3 rounded-2xl bg-purple-50/50 p-3">
           <ProgressStepper
             steps={PREORDER_ORDER_PROGRESS_STEPS}

@@ -28,6 +28,7 @@ export interface MyShipmentSupplement {
 export interface MyShipmentOrder {
   id: string; // shipment id
   shipmentNumber: string;
+  shipmentType: "preorder" | "artist";
   status: ShipmentItemStatus;
   orderNumbers: string[];
   marketplaceOrderNumber: string | null;
@@ -37,6 +38,10 @@ export interface MyShipmentOrder {
   supplements: MyShipmentSupplement[];
   bonusSelections: OrderBonusSelectionView[];
   createdAt: string;
+  buyerNote: string | null;
+  completedAt: string | null;
+  completedByRole: "member" | "artist" | "super_admin" | null;
+  completedByLabel: string | null;
 }
 
 export async function getMyShipmentBatches(): Promise<MyShipmentOrder[]> {
@@ -48,7 +53,7 @@ export async function getMyShipmentBatches(): Promise<MyShipmentOrder[]> {
     .from("orders")
     .select("id, order_number, pickup_method, event_pickup_display_name")
     .eq("user_id", member.id)
-    .eq("order_type", "preorder");
+    .in("order_type", ["preorder", "artist"]);
 
   if (!orders || orders.length === 0) return [];
 
@@ -76,7 +81,9 @@ export async function getMyShipmentBatches(): Promise<MyShipmentOrder[]> {
         .in("id", orderItemIds),
       supabase
         .from("shipments")
-        .select("id, shipment_number, status, marketplace_order_number, created_at")
+        .select(
+          "id, shipment_number, shipment_type, status, marketplace_order_number, created_at, buyer_note, completed_at, completed_by_role, completed_by_label"
+        )
         .in("id", shipmentIds)
         .order("created_at", { ascending: false }),
       supabase.from("supplements").select("order_id, amount, reason, status").in("order_id", orderIds),
@@ -138,6 +145,7 @@ export async function getMyShipmentBatches(): Promise<MyShipmentOrder[]> {
       batch = {
         id: item.shipment_id,
         shipmentNumber: shipment.shipment_number,
+        shipmentType: shipment.shipment_type,
         status: shipment.status,
         orderNumbers: [],
         marketplaceOrderNumber: shipment.marketplace_order_number,
@@ -147,6 +155,10 @@ export async function getMyShipmentBatches(): Promise<MyShipmentOrder[]> {
         supplements: [],
         bonusSelections: [],
         createdAt: shipment.created_at,
+        buyerNote: shipment.buyer_note,
+        completedAt: shipment.completed_at,
+        completedByRole: shipment.completed_by_role,
+        completedByLabel: shipment.completed_by_label,
       };
       batches.set(item.shipment_id, batch);
     }

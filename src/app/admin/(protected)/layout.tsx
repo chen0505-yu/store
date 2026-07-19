@@ -3,40 +3,35 @@ import Link from "next/link";
 import { getCurrentAdmin } from "@/lib/admin-auth";
 import { AdminLogoutButton } from "@/components/admin/AdminLogoutButton";
 
+// 「現貨商品／現貨訂單／現貨區設定」從選單移除，但頁面與資料原封不動保留，
+// 直接用網址仍可進入使用（平台調整：拆分葴葴預購與繪師預購）。
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/members", label: "會員管理" },
+  { href: "/admin/artists", label: "繪師管理" },
+  { href: "/admin/artist-ads", label: "繪師廣告管理" },
   { href: "/admin/announcements", label: "公告管理" },
   { href: "/admin/tags", label: "Tag 管理" },
   { href: "/admin/preorder-products", label: "預購商品" },
-  { href: "/admin/instock-products", label: "現貨商品" },
-  { href: "/admin/instock-settings", label: "現貨區設定" },
   { href: "/admin/archived-products", label: "已封存商品" },
   { href: "/admin/import", label: "Excel 批量上架" },
   { href: "/admin/preorder-orders", label: "預購訂單" },
-  { href: "/admin/instock-orders", label: "現貨訂單" },
   { href: "/admin/shipments", label: "出貨訂單管理" },
+  { href: "/admin/completed-shipments", label: "已完成訂單" },
   { href: "/admin/product-stats", label: "商品統計" },
   { href: "/admin/payment-settings", label: "匯款帳戶設定" },
 ];
 
 // 涵蓋所有 /admin/* 後台管理頁面（/admin/login 不在這個 route group 底下，不受影響）：
 // 一律要求管理員已登入，否則導回 /admin/login。
-// artist（繪師）角色先預留，登入後只顯示「尚未開放」，不進到完整後台管理功能。
+// artist（繪師）角色只能管理自己的商店，導去獨立的 /admin/artist 路由群組，
+// 不進到 super_admin 專用的全站後台。
 export default async function AdminProtectedLayout({ children }: { children: React.ReactNode }) {
   const admin = await getCurrentAdmin();
   if (!admin) redirect("/admin/login");
 
   if (admin.role === "artist") {
-    return (
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-4 px-4 py-16 text-center">
-        <p className="text-lg font-semibold text-purple-700">繪師功能尚未開放</p>
-        <p className="text-sm text-zinc-500">
-          目前登入身份：{admin.displayName}（繪師）。繪師自行上架商品的功能還在準備中，請耐心等候開放通知。
-        </p>
-        <AdminLogoutButton />
-      </div>
-    );
+    redirect("/admin/artist");
   }
 
   return (

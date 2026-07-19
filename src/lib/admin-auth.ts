@@ -3,13 +3,15 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const ADMIN_SESSION_COOKIE = "litan_admin_session";
 
-export type AdminRole = "admin" | "artist";
+export type AdminRole = "super_admin" | "artist";
 
 export interface CurrentAdmin {
   id: string;
   username: string;
   displayName: string;
   role: AdminRole;
+  // 只有 role === "artist" 才會有值，代表這個帳號對應哪一間繪師商店（teachers row）。
+  teacherId: string | null;
 }
 
 // 從 session cookie 換回目前登入的後台管理員。只能在 Server Component / Server Action
@@ -32,7 +34,7 @@ export async function getCurrentAdmin(): Promise<CurrentAdmin | null> {
 
   const { data: admin } = await supabase
     .from("admin_users")
-    .select("id, username, display_name, role, is_active")
+    .select("id, username, display_name, role, teacher_id, is_active")
     .eq("id", session.admin_id)
     .maybeSingle();
 
@@ -43,5 +45,6 @@ export async function getCurrentAdmin(): Promise<CurrentAdmin | null> {
     username: admin.username,
     displayName: admin.display_name,
     role: admin.role as AdminRole,
+    teacherId: admin.teacher_id,
   };
 }

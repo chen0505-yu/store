@@ -35,6 +35,22 @@ export function getPreorderPhase(
   return "active";
 }
 
+export type RemittancePhase = "not_started" | "active" | "ended";
+
+// 繪師匯款規則三態：未到開始時間「尚未開放匯款」、期間內顯示匯款表單、超過截止時間「匯款期限已截止」。
+export function getRemittancePhase(
+  window: { remittanceStartsAt: string | null; remittanceEndsAt: string | null },
+  now: number = Date.now()
+): RemittancePhase {
+  if (window.remittanceStartsAt && now < new Date(window.remittanceStartsAt).getTime()) {
+    return "not_started";
+  }
+  if (window.remittanceEndsAt && now > new Date(window.remittanceEndsAt).getTime()) {
+    return "ended";
+  }
+  return "active";
+}
+
 export const BLACKLIST_MESSAGE = "您的帳號目前無法下單，請聯繫管理員。";
 
 // 統一計算「這個商品現在能不能加入購物車／下單」，商品卡片與商品詳細頁共用同一套規則，

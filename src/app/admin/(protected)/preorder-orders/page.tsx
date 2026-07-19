@@ -1,5 +1,6 @@
 import { getShipmentItemsForAdmin } from "@/lib/data/admin-shipment-items";
 import { ShipmentItemMergeList } from "@/components/admin/ShipmentItemMergeList";
+import { deletePreorderOrder } from "@/lib/actions/orders";
 import { EmptyState } from "@/components/EmptyState";
 
 export default async function AdminPreorderOrdersPage() {
@@ -11,7 +12,7 @@ export default async function AdminPreorderOrdersPage() {
       {items.length === 0 ? (
         <EmptyState text="目前沒有預購訂單" />
       ) : (
-        <ShipmentItemMergeList items={items} orderType="preorder" />
+        <ShipmentItemMergeList items={items} orderType="preorder" deleteOrderAction={deletePreorderOrder} />
       )}
     </div>
   );
