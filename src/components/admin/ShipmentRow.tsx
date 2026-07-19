@@ -3,7 +3,12 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { AdminShipment } from "@/lib/data/shipments";
-import { advanceShipmentStatus, deleteShipmentOrder, markShipmentsPrinted } from "@/lib/actions/shipments";
+import {
+  advanceShipmentStatus,
+  completeShipment,
+  deleteShipmentOrder,
+  markShipmentsPrinted,
+} from "@/lib/actions/shipments";
 import { getDisplayShipmentStatusLabel } from "@/lib/shipment-status";
 import { OrderPaymentPanel } from "./OrderPaymentPanel";
 import { ProgressStepper } from "@/components/ProgressStepper";
@@ -53,10 +58,24 @@ export function ShipmentRow({ shipment }: { shipment: AdminShipment }) {
             平台訂單編號：{shipment.orderNumbers.join("、") || "-"}
           </p>
           <p className="text-xs text-zinc-400">建立時間：{formatTime(shipment.createdAt)}</p>
+          {shipment.buyerNote && (
+            <p className="mt-1 text-xs text-pink-600">買家備註：{shipment.buyerNote}</p>
+          )}
+          {shipment.completedAt && (
+            <p className="mt-1 text-xs text-zinc-400">
+              完成時間：{formatTime(shipment.completedAt)}（
+              {shipment.completedByRole === "member"
+                ? "買家"
+                : shipment.completedByRole === "artist"
+                  ? "繪師"
+                  : "後台"}
+              {shipment.completedByLabel ? ` ${shipment.completedByLabel}` : ""} 完成）
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1">
           <span className="rounded-full bg-purple-100 px-2 py-1 text-xs text-purple-700">
-            {shipment.shipmentType === "preorder" ? "預購" : "現貨"} ·{" "}
+            {shipment.shipmentType === "preorder" ? "預購" : shipment.shipmentType === "artist" ? "繪師預購" : "現貨"} ·{" "}
             {getDisplayShipmentStatusLabel(shipment.status, shipment.pickupMethod)}
           </span>
           {shipment.printedAt && (
@@ -203,6 +222,19 @@ export function ShipmentRow({ shipment }: { shipment: AdminShipment }) {
           className="rounded-full bg-purple-500 px-3 py-1 text-xs text-white disabled:opacity-40"
         >
           {isFinal ? "已完成" : "推進下一階段"}
+        </button>
+        <button
+          onClick={() =>
+            startTransition(async () => {
+              const result = await completeShipment(shipment.id);
+              setMessage(result.message);
+              if (result.success) router.refresh();
+            })
+          }
+          disabled={isFinal || isPending}
+          className="rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+        >
+          完成訂單
         </button>
         <button
           onClick={handleDelete}

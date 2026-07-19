@@ -42,7 +42,7 @@ export async function createFirstAdmin(
     username: trimmedUsername,
     password_hash: passwordHash,
     display_name: trimmedDisplayName,
-    role: "admin",
+    role: "super_admin",
   });
 
   if (error) return { success: false, message: error.message };

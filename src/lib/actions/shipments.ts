@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentMember } from "@/lib/auth";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import type { OrderType } from "@/lib/types";
 import { MERGEABLE_SHIPMENT_STATUSES, SHIPMENT_STATUS_LABEL, SHIPMENT_STATUS_ORDER } from "@/lib/shipment-status";
 import { getEffectiveSurcharge } from "@/lib/surcharge";
@@ -61,6 +62,51 @@ async function validateSamePickupGroup(
   return { ok: true };
 }
 
+// 繪師預購專用：查出這些 order_item 分別屬於哪一位繪師（透過 artist_group_id 反查
+// artist_product_groups.teacher_id），回傳去重後的 teacherId 集合，用來擋下「不同繪師的
+// 訂單合併成同一張出貨訂單」——葴葴預購允許跨老師合併（同一個賣家葴葴自己出貨），
+// 但繪師預購每位繪師各自是獨立賣家，不可混在一起。
+async function getDistinctArtistTeacherIds(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  orderItemIds: string[]
+): Promise<Set<string>> {
+  const { data: orderItems } = await supabase
+    .from("order_items")
+    .select("id, artist_group_id")
+    .in("id", orderItemIds);
+  const groupIds = Array.from(
+    new Set((orderItems ?? []).map((oi) => oi.artist_group_id).filter((id): id is string => Boolean(id)))
+  );
+  if (groupIds.length === 0) return new Set();
+  const { data: groups } = await supabase.from("artist_product_groups").select("id, teacher_id").in("id", groupIds);
+  return new Set((groups ?? []).map((g) => g.teacher_id));
+}
+
+async function getArtistTeacherIdByOrderItemId(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  orderItemIds: string[]
+): Promise<Map<string, string>> {
+  const { data: orderItems } = await supabase
+    .from("order_items")
+    .select("id, artist_group_id")
+    .in("id", orderItemIds);
+  const rows = orderItems ?? [];
+  const groupIds = Array.from(new Set(rows.map((oi) => oi.artist_group_id).filter((id): id is string => Boolean(id))));
+  const { data: groups } =
+    groupIds.length > 0
+      ? await supabase.from("artist_product_groups").select("id, teacher_id").in("id", groupIds)
+      : { data: [] };
+  const teacherIdByGroupId = new Map((groups ?? []).map((g) => [g.id, g.teacher_id]));
+  const result = new Map<string, string>();
+  for (const oi of rows) {
+    if (oi.artist_group_id) {
+      const teacherId = teacherIdByGroupId.get(oi.artist_group_id);
+      if (teacherId) result.set(oi.id, teacherId);
+    }
+  }
+  return result;
+}
+
 // 合併出貨規則（以「一件商品」為單位，不是整張訂單）：
 // 1. 現貨不可與預購合併（只合併同一個 orderType 的品項）。
 // 2. 只能合併狀態為「已到台／整理中／已開賣貨便」（見 MERGEABLE_SHIPMENT_STATUSES）
@@ -111,6 +157,14 @@ export async function mergeShipmentItems(
   const buyerIds = new Set(orders.map((o) => o.user_id));
   if (buyerIds.size > 1) {
     return { success: false, message: "只能合併同一位買家的商品" };
+  }
+
+  // 繪師預購：每位繪師各自結帳、各自出貨，同一位買家在不同繪師底下的訂單不可合併成同一張出貨訂單。
+  if (orderType === "artist") {
+    const teacherCheck = await getDistinctArtistTeacherIds(supabase, items.map((i) => i.order_item_id));
+    if (teacherCheck.size > 1) {
+      return { success: false, message: "不同繪師的訂單不可合併出貨" };
+    }
   }
 
   // 一張出貨訂單只能是同一種取貨方式：賣貨便只能合併賣貨便，現場取貨/面交只能合併同一活動場次，
@@ -249,7 +303,12 @@ interface BatchMergeGroup {
 // 後台「批量合併賣貨便」：一次勾選多位買家，各自獨立建立一張出貨訂單（不會把不同買家混進同一張）。
 // 只合併賣貨便、匯款已確認、狀態可合併且尚未合併過的商品，其餘一律略過並回報原因，
 // 讓後台知道哪些買家沒有處理、為什麼——不會為了「批量」而放寬既有的單筆合併規則。
-export async function mergeShipmentItemsBatch(groups: BatchMergeGroup[]): Promise<BatchMergeResult> {
+// 葴葴預購（orderType='preorder'）跟繪師預購（orderType='artist'）都支援；繪師預購額外規則：
+// 同一位買家底下若混了不同繪師的商品，會依繪師再拆成各自獨立的出貨訂單，不會合併成一張。
+export async function mergeShipmentItemsBatch(
+  groups: BatchMergeGroup[],
+  orderType: OrderType = "preorder"
+): Promise<BatchMergeResult> {
   if (groups.length === 0) {
     return { success: false, message: "請至少選擇一位買家", createdCount: 0, skipped: [] };
   }
@@ -282,17 +341,22 @@ export async function mergeShipmentItemsBatch(groups: BatchMergeGroup[]): Promis
   const itemById = new Map(items.map((i) => [i.id, i]));
   const orderById = new Map(orders.map((o) => [o.id, o]));
 
+  const teacherIdByOrderItemId =
+    orderType === "artist"
+      ? await getArtistTeacherIdByOrderItemId(supabase, items.map((i) => i.order_item_id))
+      : new Map<string, string>();
+
   let createdCount = 0;
   const skipped: { customerName: string | null; reason: string }[] = [];
 
   for (const group of groups) {
     const reasons = new Set<string>();
-    const eligibleItems: { id: string; order_id: string; order_item_id: string }[] = [];
+    const eligibleItems: { id: string; order_id: string; order_item_id: string; teacherId: string | null }[] = [];
 
     for (const itemId of group.itemIds) {
       const item = itemById.get(itemId);
       const order = item ? orderById.get(item.order_id) : undefined;
-      if (!item || !order || item.order_type !== "preorder") continue;
+      if (!item || !order || item.order_type !== orderType) continue;
 
       if (item.shipment_id) {
         reasons.add("商品已合併過");
@@ -311,7 +375,12 @@ export async function mergeShipmentItemsBatch(groups: BatchMergeGroup[]): Promis
         continue;
       }
 
-      eligibleItems.push({ id: item.id, order_id: item.order_id, order_item_id: item.order_item_id });
+      eligibleItems.push({
+        id: item.id,
+        order_id: item.order_id,
+        order_item_id: item.order_item_id,
+        teacherId: teacherIdByOrderItemId.get(item.order_item_id) ?? null,
+      });
     }
 
     if (eligibleItems.length === 0) {
@@ -322,44 +391,66 @@ export async function mergeShipmentItemsBatch(groups: BatchMergeGroup[]): Promis
       continue;
     }
 
-    const buyerOrder = orderById.get(eligibleItems[0].order_id);
-    const { data: shipment, error: shipmentError } = await supabase
-      .from("shipments")
-      .insert({
-        shipment_type: "preorder",
-        status: "packing",
-        user_id: buyerOrder?.user_id ?? null,
-        customer_name: group.customerName,
-      })
-      .select("id")
-      .single();
+    // 繪師預購：同一位買家的商品依繪師（teacherId）再拆分，各自獨立成一張出貨訂單，
+    // 避免不同繪師的訂單被誤合併成同一張賣貨便包裹。
+    const subGroups =
+      orderType === "artist"
+        ? Array.from(
+            eligibleItems.reduce((map, item) => {
+              const key = item.teacherId ?? "unknown";
+              const list = map.get(key) ?? [];
+              list.push(item);
+              map.set(key, list);
+              return map;
+            }, new Map<string, typeof eligibleItems>())
+          ).map(([, subItems]) => subItems)
+        : [eligibleItems];
 
-    if (shipmentError || !shipment) {
-      skipped.push({
-        customerName: group.customerName,
-        reason: shipmentError?.message ?? "建立出貨訂單失敗",
-      });
-      continue;
+    for (const subItems of subGroups) {
+      const buyerOrder = orderById.get(subItems[0].order_id);
+      const { data: shipment, error: shipmentError } = await supabase
+        .from("shipments")
+        .insert({
+          shipment_type: orderType,
+          status: "packing",
+          user_id: buyerOrder?.user_id ?? null,
+          customer_name: group.customerName,
+        })
+        .select("id")
+        .single();
+
+      if (shipmentError || !shipment) {
+        skipped.push({
+          customerName: group.customerName,
+          reason: shipmentError?.message ?? "建立出貨訂單失敗",
+        });
+        continue;
+      }
+
+      const eligibleIds = subItems.map((i) => i.id);
+      const { error: updateError } = await supabase
+        .from("shipment_items")
+        .update({ shipment_id: shipment.id, status: "packing", updated_at: new Date().toISOString() })
+        .in("id", eligibleIds);
+
+      if (updateError) {
+        skipped.push({ customerName: group.customerName, reason: updateError.message });
+        continue;
+      }
+
+      if (orderType === "preorder") {
+        await autoApplyItemSurcharges(supabase, subItems);
+      }
+      createdCount += 1;
     }
-
-    const eligibleIds = eligibleItems.map((i) => i.id);
-    const { error: updateError } = await supabase
-      .from("shipment_items")
-      .update({ shipment_id: shipment.id, status: "packing", updated_at: new Date().toISOString() })
-      .in("id", eligibleIds);
-
-    if (updateError) {
-      skipped.push({ customerName: group.customerName, reason: updateError.message });
-      continue;
-    }
-
-    await autoApplyItemSurcharges(supabase, eligibleItems);
-    createdCount += 1;
   }
 
   revalidatePath("/admin/preorder-orders");
   revalidatePath("/admin/shipments");
+  revalidatePath("/admin/artist/orders");
+  revalidatePath("/admin/artist/shipments");
   revalidatePath("/member/preorder-orders");
+  revalidatePath("/member/artist-orders");
   revalidatePath("/member/shipment-orders");
 
   return {
@@ -520,4 +611,132 @@ export async function deleteShipmentOrder(shipmentId: string): Promise<ActionRes
   revalidatePath("/member/preorder-orders");
   revalidatePath("/member/shipment-orders");
   return { success: true, message: "已刪除出貨訂單，商品已回到可重新合併的狀態" };
+}
+
+// 買家備註：買家可以新增／修改，後台與繪師後台都能查看，但不能讓買家改商品／金額／取貨方式
+// （這個 action 只動 buyer_note 一個欄位）。跟填賣貨便訂單編號一樣，用「這筆出貨訂單裡
+// 是否有一筆訂單屬於自己」來驗證擁有權。
+export async function setShipmentBuyerNote(shipmentId: string, note: string): Promise<ActionResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const member = await getCurrentMember();
+  if (!member) return { success: false, message: "請先登入會員" };
+
+  const { data: shipmentItems } = await supabase
+    .from("shipment_items")
+    .select("order_id")
+    .eq("shipment_id", shipmentId);
+  if (!shipmentItems || shipmentItems.length === 0) {
+    return { success: false, message: "找不到這筆出貨訂單" };
+  }
+
+  const orderIds = Array.from(new Set(shipmentItems.map((i) => i.order_id)));
+  const { data: orders } = await supabase.from("orders").select("id, user_id").in("id", orderIds);
+  const belongsToMember = (orders ?? []).some((o) => o.user_id === member.id);
+  if (!belongsToMember) return { success: false, message: "您不是這筆出貨訂單的買家" };
+
+  const { error } = await supabase
+    .from("shipments")
+    .update({ buyer_note: note.trim() || null })
+    .eq("id", shipmentId);
+  if (error) return { success: false, message: error.message };
+
+  revalidatePath("/member/shipment-orders");
+  revalidatePath("/admin/shipments");
+  revalidatePath("/admin/artist/shipments");
+  return { success: true, message: "已更新備註" };
+}
+
+// 完成訂單：買家（訂單擁有者）、該出貨訂單所屬的繪師、或 super_admin 皆可操作。
+// 任一合法身分完成後，狀態直接改為 completed（不需要照 SHIPMENT_STATUS_ORDER 逐步推進），
+// 並記錄是誰、用什麼身分完成的，供「已完成訂單」頁面與 Excel 匯出使用。
+export async function completeShipment(shipmentId: string): Promise<ActionResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const { data: shipment } = await supabase
+    .from("shipments")
+    .select("id, status, shipment_type")
+    .eq("id", shipmentId)
+    .maybeSingle();
+  if (!shipment) return { success: false, message: "找不到這筆出貨訂單" };
+  if (shipment.status === "completed") return { success: false, message: "此出貨訂單已經是完成狀態" };
+
+  const { data: shipmentItems } = await supabase
+    .from("shipment_items")
+    .select("order_id")
+    .eq("shipment_id", shipmentId);
+  const orderIds = Array.from(new Set((shipmentItems ?? []).map((i) => i.order_id)));
+
+  let role: "member" | "artist" | "super_admin" | null = null;
+  let label = "";
+
+  const member = await getCurrentMember();
+  if (member) {
+    const { data: orders } = await supabase.from("orders").select("id, user_id").in("id", orderIds);
+    if ((orders ?? []).some((o) => o.user_id === member.id)) {
+      role = "member";
+      label = member.fbName;
+    }
+  }
+
+  if (!role) {
+    const admin = await getCurrentAdmin();
+    if (admin?.role === "super_admin") {
+      role = "super_admin";
+      label = admin.displayName;
+    } else if (admin?.role === "artist" && shipment.shipment_type === "artist" && admin.teacherId) {
+      const { data: orderItems } = await supabase
+        .from("order_items")
+        .select("id, artist_group_id")
+        .in("order_id", orderIds);
+      const groupIds = Array.from(
+        new Set((orderItems ?? []).map((oi) => oi.artist_group_id).filter((id): id is string => Boolean(id)))
+      );
+      const { data: groups } =
+        groupIds.length > 0
+          ? await supabase.from("artist_product_groups").select("id, teacher_id").in("id", groupIds)
+          : { data: [] };
+      const allBelongToArtist =
+        (groups ?? []).length > 0 && (groups ?? []).every((g) => g.teacher_id === admin.teacherId);
+      if (allBelongToArtist) {
+        role = "artist";
+        label = admin.displayName;
+      }
+    }
+  }
+
+  if (!role) return { success: false, message: "沒有權限完成這筆出貨訂單" };
+
+  await supabase
+    .from("shipments")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      completed_by_role: role,
+      completed_by_label: label,
+    })
+    .eq("id", shipmentId);
+
+  await supabase
+    .from("shipment_items")
+    .update({ status: "completed", updated_at: new Date().toISOString() })
+    .eq("shipment_id", shipmentId);
+
+  for (const orderId of orderIds) {
+    const { data: allItems } = await supabase.from("shipment_items").select("status").eq("order_id", orderId);
+    if ((allItems ?? []).every((i) => i.status === "completed")) {
+      await supabase.from("orders").update({ status: "completed" }).eq("id", orderId);
+    }
+  }
+
+  revalidatePath("/admin/shipments");
+  revalidatePath("/admin/artist/shipments");
+  revalidatePath("/admin/completed-shipments");
+  revalidatePath("/member/shipment-orders");
+  revalidatePath("/member/preorder-orders");
+  revalidatePath("/member/artist-orders");
+
+  return { success: true, message: "已完成訂單" };
 }
