@@ -146,6 +146,32 @@ export async function updatePosProductStock(id: string, stockQuantity: number): 
   return { success: true, message: "已更新庫存" };
 }
 
+// 商品列表卡片上直接改名稱／價格用，跟 updatePosProductStock 同樣的「只改這幾欄、
+// 不用整個表單」模式，三個欄位（名稱/價格/庫存）在卡片上共用同一顆「儲存」按鈕，
+// 所以一次把目前卡片上三個欄位的值都送過來，而不是各自獨立呼叫三次 action。
+export async function updatePosProductCardFields(
+  id: string,
+  fields: { name: string; price: number; stockQuantity: number }
+): Promise<PosActionResult> {
+  const staff = await getCurrentStaff();
+  if (!staff || !canAccessPosAdmin(staff.role)) return { success: false, message: "沒有權限" };
+  if (!fields.name.trim()) return { success: false, message: "商品名稱不可空白" };
+  if (fields.price < 0) return { success: false, message: "單價不可為負數" };
+  if (fields.stockQuantity < 0) return { success: false, message: "庫存不可為負數" };
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const { error } = await supabase
+    .from("pos_product_groups")
+    .update({ name: fields.name.trim(), price: fields.price, stock_quantity: fields.stockQuantity })
+    .eq("id", id);
+  if (error) return { success: false, message: error.message };
+
+  revalidatePosAdmin();
+  return { success: true, message: "已儲存" };
+}
+
 // 商品拖曳排序：orderedGroupIds 是拖曳完成後由上到下的順序，依序寫入 sort_order（POS 收銀畫面
 // 依這個順序顯示）。限制在同一位繪師底下操作，避免不同繪師的商品被混著排序。
 export async function reorderPosProductGroups(artistId: string, orderedGroupIds: string[]): Promise<PosActionResult> {
