@@ -250,7 +250,7 @@ export function CompletedShipmentsList({
                   買家：{s.customerName ?? "-"}　平台訂單：{s.orderNumbers.join("、") || "-"}
                 </p>
                 <p className="text-xs text-zinc-400">
-                  金額 NT$ {s.totalAmount}
+                  金額 NT$ {s.totalAmount}｜
                   {s.pickupMethod === "event_pickup" ? `面交：${s.eventPickupDisplayName ?? "-"}` : "賣貨便"}
                   {s.marketplaceOrderNumber ? `（${s.marketplaceOrderNumber}）` : ""}
                 </p>
