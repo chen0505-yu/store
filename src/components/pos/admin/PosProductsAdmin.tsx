@@ -9,10 +9,11 @@ import {
   createPosProductGroup,
   updatePosProductGroup,
   deletePosProductGroup,
-  updatePosProductStock,
+  updatePosProductCardFields,
   reorderPosProductGroups,
   type PosProductVariantInput,
 } from "@/lib/actions/pos-products";
+import type { PosActionResult } from "@/lib/pos-types";
 import { hasVariants as groupHasVariants } from "@/lib/pos-product-stock";
 import { GlassCard } from "@/components/pos/GlassCard";
 import { GlowButton } from "@/components/pos/GlowButton";
@@ -74,19 +75,26 @@ export function PosProductsAdmin({
   }
 
   // 拖曳排序只在選定單一 Artist 時開放（POS 收銀畫面一次只看一位繪師的商品，排序才有意義）。
-  // orderedGroups 是本地暫存的顯示順序，拖曳當下先立即反應，背景再送出排序更新。
-  const [orderedGroups, setOrderedGroups] = useState(visibleGroups);
+  // 這裡只記「順序」（一串 id），不是整包商品物件——欄位本身的值（名稱/價格/庫存/備註...）
+  // 一律直接從最新的 visibleGroups 取，這樣卡片內編輯名稱/價格存檔後，router.refresh()
+  // 帶回來的新值才會確實反映在畫面上，不會因為 id 集合沒變就被本地的舊物件蓋掉。
+  const [orderedIds, setOrderedIds] = useState<string[]>(visibleGroups.map((g) => g.id));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [prevVisibleGroupIds, setPrevVisibleGroupIds] = useState(visibleGroupIds);
   if (visibleGroupIds !== prevVisibleGroupIds) {
     setPrevVisibleGroupIds(visibleGroupIds);
-    setOrderedGroups(visibleGroups);
+    setOrderedIds(visibleGroups.map((g) => g.id));
   }
+  const groupsById = new Map(visibleGroups.map((g) => [g.id, g]));
+  const orderedGroups = orderedIds
+    .map((id) => groupsById.get(id))
+    .filter((g): g is PosProductGroupWithArtistName => Boolean(g));
 
   function commitReorder(next: PosProductGroupWithArtistName[]) {
-    setOrderedGroups(next);
+    const nextIds = next.map((g) => g.id);
+    setOrderedIds(nextIds);
     startTransition(async () => {
-      await reorderPosProductGroups(selectedArtistId, next.map((g) => g.id));
+      await reorderPosProductGroups(selectedArtistId, nextIds);
       router.refresh();
     });
   }
@@ -112,12 +120,13 @@ export function PosProductsAdmin({
     commitReorder(next);
   }
 
-  function handleStockSave(groupId: string, stockQuantity: number) {
-    startTransition(async () => {
-      const result = await updatePosProductStock(groupId, stockQuantity);
-      setMessage(result.message);
-      router.refresh();
-    });
+  async function handleCardSave(
+    groupId: string,
+    fields: { name: string; price: number; stockQuantity: number }
+  ): Promise<PosActionResult> {
+    const result = await updatePosProductCardFields(groupId, fields);
+    if (result.success) router.refresh();
+    return result;
   }
 
   function handleArtistFilterChange(value: string) {
@@ -367,7 +376,7 @@ export function PosProductsAdmin({
             onDrop={() => handleDrop(index)}
             onEdit={() => startEdit(group)}
             onDelete={() => remove(group.id)}
-            onStockSave={(stock) => handleStockSave(group.id, stock)}
+            onSave={(fields) => handleCardSave(group.id, fields)}
             onMoveUp={selectedArtistId && index > 0 ? () => moveGroup(index, -1) : undefined}
             onMoveDown={
               selectedArtistId && index < orderedGroups.length - 1 ? () => moveGroup(index, 1) : undefined
@@ -393,7 +402,7 @@ function ProductListItem({
   onDrop,
   onEdit,
   onDelete,
-  onStockSave,
+  onSave,
   onMoveUp,
   onMoveDown,
 }: {
@@ -405,18 +414,54 @@ function ProductListItem({
   onDrop: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onStockSave: (stock: number) => void;
+  onSave: (fields: { name: string; price: number; stockQuantity: number }) => Promise<PosActionResult>;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
 }) {
   const withVariants = groupHasVariants(group);
+
+  // 名稱／價格／庫存三個欄位共用同一顆「儲存」按鈕。本地 input 值只在對應的
+  // group prop 真的變動時才跟著重置（例如儲存成功、或拖曳排序後重新整理），
+  // 這樣使用者打字打到一半不會被外部 re-render 蓋掉。
+  const [nameInput, setNameInput] = useState(group.name);
+  const [priceInput, setPriceInput] = useState(String(group.price));
   const [stockInput, setStockInput] = useState(String(group.stockQuantity));
-  const [prevStockQuantity, setPrevStockQuantity] = useState(group.stockQuantity);
-  if (group.stockQuantity !== prevStockQuantity) {
-    setPrevStockQuantity(group.stockQuantity);
+  const [prevGroup, setPrevGroup] = useState(group);
+  if (group.name !== prevGroup.name || group.price !== prevGroup.price || group.stockQuantity !== prevGroup.stockQuantity) {
+    setPrevGroup(group);
+    setNameInput(group.name);
+    setPriceInput(String(group.price));
     setStockInput(String(group.stockQuantity));
   }
-  const stockDirty = Number(stockInput) !== group.stockQuantity;
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const dirty =
+    nameInput.trim() !== group.name ||
+    Number(priceInput) !== group.price ||
+    Number(stockInput) !== group.stockQuantity;
+
+  async function handleSave() {
+    setIsSaving(true);
+    setSaveMessage(null);
+    const result = await onSave({
+      name: nameInput,
+      price: Number(priceInput),
+      stockQuantity: Number(stockInput),
+    });
+    setIsSaving(false);
+    if (result.success) {
+      setSaveMessage({ text: result.message, isError: false });
+    } else {
+      // 失敗要保留原值，不能讓畫面看起來像已經改成功——把輸入框重置回目前真正
+      // 儲存在資料庫的值，只留下錯誤訊息。
+      setNameInput(group.name);
+      setPriceInput(String(group.price));
+      setStockInput(String(group.stockQuantity));
+      setSaveMessage({ text: result.message, isError: true });
+    }
+  }
 
   return (
     <GlassCard
@@ -455,11 +500,23 @@ function ProductListItem({
         )}
       </div>
       <div className="flex-1">
-        <p className="font-semibold">{group.name}</p>
-        <p className="text-xs text-[var(--pos-text-muted)]">{group.artistName}</p>
-        <p className="text-sm" style={{ color: "var(--pos-gold)" }}>
-          NT$ {group.price}
-        </p>
+        <input
+          value={nameInput}
+          onChange={(e) => setNameInput(e.target.value)}
+          className="pos-input w-full px-2 py-1 text-sm font-semibold"
+          placeholder="商品名稱"
+        />
+        <p className="mt-1 text-xs text-[var(--pos-text-muted)]">{group.artistName}</p>
+        <div className="mt-1 flex items-center gap-1 text-sm">
+          <span style={{ color: "var(--pos-gold)" }}>NT$</span>
+          <input
+            type="number"
+            min={0}
+            value={priceInput}
+            onChange={(e) => setPriceInput(e.target.value)}
+            className="pos-input w-20 px-2 py-1"
+          />
+        </div>
         <div className="mt-1 flex items-center gap-2 text-xs">
           <span className="text-[var(--pos-text-muted)]">庫存</span>
           <input
@@ -469,15 +526,6 @@ function ProductListItem({
             onChange={(e) => setStockInput(e.target.value)}
             className="pos-input w-16 px-2 py-1"
           />
-          {stockDirty && (
-            <button
-              type="button"
-              onClick={() => onStockSave(Number(stockInput))}
-              className="pos-glow-btn px-2 py-1 text-xs"
-            >
-              儲存
-            </button>
-          )}
         </div>
         {withVariants && (
           <p className="mt-1 text-xs text-[var(--pos-text-muted)]">
@@ -496,7 +544,23 @@ function ProductListItem({
             <span className="text-[var(--pos-text-muted)]">未販售</span>
           )}
         </p>
-        <div className="mt-2 flex gap-2 text-xs">
+        {saveMessage && (
+          <p className={`mt-1 text-xs ${saveMessage.isError ? "text-red-400" : ""}`} style={saveMessage.isError ? undefined : { color: "var(--pos-gold)" }}>
+            {saveMessage.isError ? "⚠ " : "✓ "}
+            {saveMessage.text}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          {dirty && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="pos-glow-btn px-3 py-1.5 disabled:opacity-50"
+            >
+              {isSaving ? "儲存中..." : "儲存"}
+            </button>
+          )}
           <button onClick={onEdit} className="pos-input px-2 py-1">
             編輯
           </button>
