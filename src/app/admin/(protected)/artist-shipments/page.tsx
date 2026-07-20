@@ -5,6 +5,7 @@ import { listArtistAccounts } from "@/lib/data/artist-accounts";
 import { ShipmentList } from "@/components/admin/ShipmentList";
 import { ArtistShopSwitcher } from "@/components/admin/ArtistShopSwitcher";
 import { EmptyState } from "@/components/EmptyState";
+import { filterShipments } from "@/lib/dashboard-filters";
 
 // super_admin 專用：跨所有繪師的出貨訂單總覽。已完成訂單與 Excel 匯出走獨立頁面
 // （/admin/artist-completed-shipments，未放進側邊選單，從這裡連過去），
@@ -12,13 +13,14 @@ import { EmptyState } from "@/components/EmptyState";
 export default async function AdminArtistShipmentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ viewAs?: string }>;
+  searchParams: Promise<{ viewAs?: string; filter?: string }>;
 }) {
-  const { viewAs } = await searchParams;
-  const [artists, shipments] = await Promise.all([
+  const { viewAs, filter } = await searchParams;
+  const [artists, allShipments] = await Promise.all([
     listArtistAccounts(),
     getShipments("artist", viewAs || undefined),
   ]);
+  const shipments = filterShipments(allShipments, filter);
 
   return (
     <div>
@@ -37,7 +39,7 @@ export default async function AdminArtistShipmentsPage({
         </Suspense>
       </div>
       {shipments.length === 0 ? (
-        <EmptyState text="尚無出貨訂單，請先到繪師訂單頁面合併出貨" />
+        <EmptyState text={filter ? "沒有符合篩選條件的出貨訂單" : "尚無出貨訂單，請先到繪師訂單頁面合併出貨"} />
       ) : (
         <ShipmentList shipments={shipments} />
       )}

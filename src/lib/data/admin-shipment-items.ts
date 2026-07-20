@@ -19,6 +19,7 @@ export interface AdminShipmentItem {
   customerName: string | null;
   productName: string;
   teacherName: string | null;
+  teacherId: string | null; // 只用於繪師預購：Dashboard 依繪師分組統計要用，preorder 恆為 null
   productGroupName: string | null; // 只用於預購（老師/品項/細項架構）：品項名稱
   variantName: string | null; // 只用於預購：細項名稱
   quantity: number;
@@ -38,6 +39,7 @@ export interface AdminShipmentItem {
   merged: boolean; // 這筆訂單的這件商品是否已經合併出貨（商品進度第 4 階段判斷用）
   createdAt: string;
   buyerNote: string | null; // 商品已合併出貨後，買家在出貨單上填的備註；尚未合併則為 null
+  orderStatus: string; // orders.status（純文字欄位，"completed" 代表訂單已完成）
 }
 
 interface ShipmentItemRow {
@@ -73,6 +75,7 @@ interface OrderLookupRow {
   event_pickup_display_name: string | null;
   total_amount: number;
   created_at: string;
+  status: string;
 }
 
 // 後台訂單頁的合併出貨清單：以「每一件商品」為單位顯示狀態，
@@ -123,7 +126,7 @@ export async function getShipmentItemsForAdmin(
     supabase
       .from("orders")
       .select(
-        "id, order_number, customer_name, user_id, payment_status, pickup_method, event_pickup_display_name, total_amount, created_at"
+        "id, order_number, customer_name, user_id, payment_status, pickup_method, event_pickup_display_name, total_amount, created_at, status"
       )
       .in("id", orderIds),
     supabase
@@ -213,6 +216,7 @@ export async function getShipmentItemsForAdmin(
       customerName: order.customer_name,
       productName: oi.product_name,
       teacherName: oi.teacher_name,
+      teacherId: groupId ? teacherIdByGroupId.get(groupId) ?? null : null,
       productGroupName: orderType === "artist" ? oi.artist_group_name : oi.product_group_name,
       variantName: orderType === "artist" ? oi.artist_variant_name : oi.variant_name,
       quantity: oi.quantity,
@@ -246,6 +250,7 @@ export async function getShipmentItemsForAdmin(
       merged: Boolean(r.shipment_id),
       createdAt: order.created_at,
       buyerNote: r.shipment_id ? shipmentBuyerNoteMap.get(r.shipment_id) ?? null : null,
+      orderStatus: order.status,
     });
   }
   return result;

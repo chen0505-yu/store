@@ -5,23 +5,48 @@ import { AdminLogoutButton } from "@/components/admin/AdminLogoutButton";
 
 // 「現貨商品／現貨訂單／現貨區設定」從選單移除，但頁面與資料原封不動保留，
 // 直接用網址仍可進入使用（平台調整：拆分葴葴預購與繪師預購）。
-const NAV_ITEMS = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/members", label: "會員管理" },
-  { href: "/admin/artists", label: "繪師管理" },
-  { href: "/admin/artist-ads", label: "繪師廣告管理" },
-  { href: "/admin/announcements", label: "公告管理" },
-  { href: "/admin/tags", label: "Tag 管理" },
-  { href: "/admin/preorder-products", label: "預購商品" },
-  { href: "/admin/archived-products", label: "已封存商品" },
-  { href: "/admin/import", label: "Excel 批量上架" },
-  { href: "/admin/preorder-orders", label: "預購訂單" },
-  { href: "/admin/shipments", label: "出貨訂單管理" },
-  { href: "/admin/artist-orders", label: "繪師訂單" },
-  { href: "/admin/artist-shipments", label: "繪師出貨訂單" },
-  { href: "/admin/completed-shipments", label: "已完成訂單" },
-  { href: "/admin/product-stats", label: "商品統計" },
-  { href: "/admin/payment-settings", label: "匯款帳戶設定" },
+// 側邊選單依業務性質分組（Dashboard／葴葴預購／繪師預購／財務／系統），
+// 純粹是導覽整理，所有既有路由與資料都原封不動保留。
+const NAV_GROUPS: { label: string | null; items: { href: string; label: string }[] }[] = [
+  { label: null, items: [{ href: "/admin", label: "Dashboard" }] },
+  {
+    label: "葴葴預購",
+    items: [
+      { href: "/admin/preorder-products", label: "預購商品" },
+      { href: "/admin/archived-products", label: "已封存商品" },
+      { href: "/admin/preorder-orders", label: "預購訂單" },
+      { href: "/admin/shipments", label: "出貨訂單" },
+      { href: "/admin/completed-shipments", label: "已完成訂單" },
+      { href: "/admin/product-stats", label: "商品統計" },
+    ],
+  },
+  {
+    label: "繪師預購",
+    items: [
+      { href: "/admin/artists", label: "繪師管理" },
+      { href: "/admin/artist/products", label: "繪師商品" },
+      { href: "/admin/artist-orders", label: "繪師訂單" },
+      { href: "/admin/artist-shipments", label: "繪師出貨訂單" },
+      { href: "/admin/artist-ads", label: "繪師廣告管理" },
+    ],
+  },
+  {
+    label: "財務",
+    items: [
+      { href: "/admin/pending-payments", label: "待確認匯款" },
+      { href: "/admin/supplements", label: "補款／二補" },
+      { href: "/admin/payment-settings", label: "匯款帳戶設定" },
+    ],
+  },
+  {
+    label: "系統",
+    items: [
+      { href: "/admin/members", label: "會員管理" },
+      { href: "/admin/announcements", label: "公告管理" },
+      { href: "/admin/tags", label: "Tag 管理" },
+      { href: "/admin/import", label: "Excel 批量上架" },
+    ],
+  },
 ];
 
 // 涵蓋所有 /admin/* 後台管理頁面（/admin/login 不在這個 route group 底下，不受影響）：
@@ -40,15 +65,22 @@ export default async function AdminProtectedLayout({ children }: { children: Rea
     <div className="mx-auto flex w-full max-w-6xl flex-1 gap-6 px-4 py-8">
       <aside className="w-48 shrink-0">
         <p className="mb-4 text-lg font-bold text-purple-700">🦝 葴葴x貍攤不售後 後台</p>
-        <nav className="flex flex-col gap-1 text-sm">
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-xl px-3 py-2 text-zinc-600 hover:bg-purple-50 hover:text-purple-700"
-            >
-              {item.label}
-            </Link>
+        <nav className="flex flex-col gap-4 text-sm">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label ?? "dashboard"} className="flex flex-col gap-1">
+              {group.label && (
+                <p className="px-3 text-xs font-semibold text-zinc-400">{group.label}</p>
+              )}
+              {group.items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="rounded-xl px-3 py-2 text-zinc-600 hover:bg-purple-50 hover:text-purple-700"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
           ))}
         </nav>
       </aside>

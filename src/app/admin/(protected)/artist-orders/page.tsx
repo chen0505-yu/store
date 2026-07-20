@@ -5,6 +5,7 @@ import { ShipmentItemMergeList } from "@/components/admin/ShipmentItemMergeList"
 import { ArtistShopSwitcher } from "@/components/admin/ArtistShopSwitcher";
 import { deleteArtistOrder } from "@/lib/actions/artist-orders";
 import { EmptyState } from "@/components/EmptyState";
+import { filterShipmentItems } from "@/lib/dashboard-filters";
 
 // super_admin 專用：跨所有繪師的訂單總覽（不用像 /admin/artist/orders 一次只能看一位繪師）。
 // ?viewAs= 省略時 getShipmentItemsForAdmin("artist") 本來就會回傳全部繪師的品項，
@@ -12,13 +13,14 @@ import { EmptyState } from "@/components/EmptyState";
 export default async function AdminArtistOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ viewAs?: string }>;
+  searchParams: Promise<{ viewAs?: string; filter?: string }>;
 }) {
-  const { viewAs } = await searchParams;
-  const [artists, items] = await Promise.all([
+  const { viewAs, filter } = await searchParams;
+  const [artists, allItems] = await Promise.all([
     listArtistAccounts(),
     getShipmentItemsForAdmin("artist", viewAs || undefined),
   ]);
+  const items = filterShipmentItems(allItems, filter);
 
   return (
     <div>
@@ -32,7 +34,7 @@ export default async function AdminArtistOrdersPage({
         </Suspense>
       </div>
       {items.length === 0 ? (
-        <EmptyState text="目前沒有繪師訂單" />
+        <EmptyState text={filter ? "沒有符合篩選條件的訂單" : "目前沒有繪師訂單"} />
       ) : (
         <ShipmentItemMergeList items={items} orderType="artist" deleteOrderAction={deleteArtistOrder} />
       )}
