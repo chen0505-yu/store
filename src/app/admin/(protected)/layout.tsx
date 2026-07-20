@@ -17,6 +17,8 @@ const NAV_ITEMS = [
   { href: "/admin/import", label: "Excel 批量上架" },
   { href: "/admin/preorder-orders", label: "預購訂單" },
   { href: "/admin/shipments", label: "出貨訂單管理" },
+  { href: "/admin/artist-orders", label: "繪師訂單" },
+  { href: "/admin/artist-shipments", label: "繪師出貨訂單" },
   { href: "/admin/completed-shipments", label: "已完成訂單" },
   { href: "/admin/product-stats", label: "商品統計" },
   { href: "/admin/payment-settings", label: "匯款帳戶設定" },

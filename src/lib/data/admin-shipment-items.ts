@@ -36,6 +36,8 @@ export interface AdminShipmentItem {
   messages: OrderMessageView[];
   arrivalStatus: ArrivalStatus | null; // 只用於預購：品項目前的到貨狀態（商品進度條用，見 src/lib/progress.ts）
   merged: boolean; // 這筆訂單的這件商品是否已經合併出貨（商品進度第 4 階段判斷用）
+  createdAt: string;
+  buyerNote: string | null; // 商品已合併出貨後，買家在出貨單上填的備註；尚未合併則為 null
 }
 
 interface ShipmentItemRow {
@@ -70,6 +72,7 @@ interface OrderLookupRow {
   pickup_method: "shipment" | "event_pickup" | null;
   event_pickup_display_name: string | null;
   total_amount: number;
+  created_at: string;
 }
 
 // 後台訂單頁的合併出貨清單：以「每一件商品」為單位顯示狀態，
@@ -120,7 +123,7 @@ export async function getShipmentItemsForAdmin(
     supabase
       .from("orders")
       .select(
-        "id, order_number, customer_name, user_id, payment_status, pickup_method, event_pickup_display_name, total_amount"
+        "id, order_number, customer_name, user_id, payment_status, pickup_method, event_pickup_display_name, total_amount, created_at"
       )
       .in("id", orderIds),
     supabase
@@ -132,7 +135,7 @@ export async function getShipmentItemsForAdmin(
       .select("order_id, amount, reason, status, payment_method, note")
       .in("order_id", orderIds),
     shipmentIds.length > 0
-      ? supabase.from("shipments").select("id, marketplace_order_number").in("id", shipmentIds)
+      ? supabase.from("shipments").select("id, marketplace_order_number, buyer_note").in("id", shipmentIds)
       : Promise.resolve({ data: [] }),
     supabase
       .from("order_bonus_selections")
@@ -166,6 +169,9 @@ export async function getShipmentItemsForAdmin(
   const paymentMap = new Map((payments ?? []).map((p) => [p.order_id, p]));
   const shipmentMarketplaceMap = new Map<string, string | null>(
     (shipments ?? []).map((s) => [s.id, s.marketplace_order_number])
+  );
+  const shipmentBuyerNoteMap = new Map<string, string | null>(
+    (shipments ?? []).map((s) => [s.id, s.buyer_note])
   );
   const supplementsMap = new Map<string, SupplementView[]>();
   for (const s of supplements ?? []) {
@@ -238,6 +244,8 @@ export async function getShipmentItemsForAdmin(
       messages: messagesByOrderId.get(r.order_id) ?? [],
       arrivalStatus: groupId ? arrivalStatusByGroupId.get(groupId) ?? null : null,
       merged: Boolean(r.shipment_id),
+      createdAt: order.created_at,
+      buyerNote: r.shipment_id ? shipmentBuyerNoteMap.get(r.shipment_id) ?? null : null,
     });
   }
   return result;

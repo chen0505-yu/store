@@ -34,6 +34,12 @@ function itemPickupMethod(item: AdminShipmentItem): "shipment" | "event_pickup" 
   return item.pickupMethod === "event_pickup" ? "event_pickup" : "shipment";
 }
 
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface BuyerGroup {
   buyerId: string;
   customerName: string | null;
@@ -334,9 +340,17 @@ export function ShipmentItemMergeList({
                           <span className="font-mono font-semibold text-purple-600">
                             {orderItems[0].orderNumber}
                           </span>
+                          {orderType === "artist" && orderItems[0].teacherName && (
+                            <span className="ml-2 rounded-full bg-pink-100 px-2 py-0.5 text-xs font-semibold text-pink-600">
+                              {orderItems[0].teacherName}
+                            </span>
+                          )}
                           <span className="ml-2 text-xs text-zinc-400">
                             {orderItems.length} 件商品　訂單總金額 NT${" "}
                             {orderItems.reduce((sum, i) => sum + i.subtotal, 0)}
+                          </span>
+                          <span className="ml-2 text-xs text-zinc-400">
+                            建立時間：{formatTime(orderItems[0].createdAt)}
                           </span>
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -461,6 +475,9 @@ export function ShipmentItemMergeList({
                           ? `活動現場取貨（${orderItems[0].eventPickupDisplayName ?? "-"}）`
                           : "賣貨便配送"}
                       </p>
+                    )}
+                    {orderItems[0].buyerNote && (
+                      <p className="mt-1 text-xs text-pink-600">買家備註：{orderItems[0].buyerNote}</p>
                     )}
                     {orderItems[0].bonusSelections.length > 0 && (
                       <div className="mt-2 flex flex-col gap-1 rounded-xl bg-purple-50/60 p-2">
