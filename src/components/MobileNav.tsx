@@ -44,10 +44,10 @@ export function MobileNav({
           />
           <div className="absolute right-0 top-full z-40 mt-2 flex w-48 flex-col gap-1 rounded-2xl bg-white p-3 text-sm font-medium text-purple-600 shadow-lg">
             <Link href="/preorder" onClick={close} className="rounded-lg px-3 py-2 hover:bg-purple-50">
-              預購專區
+              葴葴預購專區
             </Link>
-            <Link href="/instock" onClick={close} className="rounded-lg px-3 py-2 hover:bg-purple-50">
-              現貨專區
+            <Link href="/artist" onClick={close} className="rounded-lg px-3 py-2 hover:bg-purple-50">
+              繪師預購專區
             </Link>
             <Link href="/member" onClick={close} className="rounded-lg px-3 py-2 hover:bg-purple-50">
               會員中心
@@ -58,6 +58,13 @@ export function MobileNav({
               className="rounded-lg px-3 py-2 hover:bg-purple-50"
             >
               我的預購訂單
+            </Link>
+            <Link
+              href="/member/artist-orders"
+              onClick={close}
+              className="rounded-lg px-3 py-2 hover:bg-purple-50"
+            >
+              我的繪師預購訂單
             </Link>
             <Link
               href="/member/shipment-orders"

@@ -1,7 +1,7 @@
 export type ProductType = "preorder" | "instock";
 // 預購商品狀態：預購中 → 未到貨 → 已到台 → 整理中 → 已開賣貨便
 export type ArrivalStatus = "preordering" | "not_arrived" | "arrived" | "packing" | "listed";
-export type OrderType = "preorder" | "instock";
+export type OrderType = "preorder" | "instock" | "artist";
 // 預購訂單的匯款/付款狀態，只用於預購，現貨恆為 null。
 export type PreorderPaymentStatus =
   | "not_remitted"

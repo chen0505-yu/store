@@ -56,18 +56,30 @@ export interface AdminShipment {
   supplementStatus: "pending" | "completed" | "none";
   createdAt: string;
   printedAt: string | null;
+  buyerNote: string | null;
+  completedAt: string | null;
+  completedByRole: "member" | "artist" | "super_admin" | null;
+  completedByLabel: string | null;
+  exportedAt: string | null;
+  exportBatchId: string | null;
 }
 
-export async function getShipments(): Promise<AdminShipment[]> {
+// orderType 篩選只查該種出貨訂單（例如繪師後台只想看自己 artist 類型的出貨訂單）；
+// artistTeacherId 進一步限定只看這位繪師自己商店底下的出貨訂單（透過商品 artist_group_id
+// 反查 teacher_id 比對，伺服器端過濾，不是只靠前端不顯示）。
+export async function getShipments(orderType?: OrderType, artistTeacherId?: string): Promise<AdminShipment[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return [];
 
-  const { data: shipments, error } = await supabase
+  let query = supabase
     .from("shipments")
     .select(
-      "id, shipment_number, shipment_type, status, customer_name, marketplace_order_number, created_at, printed_at"
+      "id, shipment_number, shipment_type, status, customer_name, marketplace_order_number, created_at, printed_at, buyer_note, completed_at, completed_by_role, completed_by_label, exported_at, export_batch_id"
     )
     .order("created_at", { ascending: false });
+  if (orderType) query = query.eq("shipment_type", orderType);
+
+  const { data: shipments, error } = await query;
 
   if (error) {
     console.error("[LITAN] 讀取出貨訂單失敗", error.message);
@@ -93,7 +105,7 @@ export async function getShipments(): Promise<AdminShipment[]> {
         ? supabase
             .from("order_items")
             .select(
-              "id, product_name, product_group_name, variant_name, teacher_name, quantity, price, subtotal, product_group_id, product_variant_id"
+              "id, product_name, product_group_name, variant_name, teacher_name, quantity, price, subtotal, product_group_id, product_variant_id, artist_group_id, artist_group_name, artist_variant_name"
             )
             .in("id", orderItemIds)
         : Promise.resolve({ data: [] }),
@@ -181,7 +193,32 @@ export async function getShipments(): Promise<AdminShipment[]> {
     itemsByShipment.set(item.shipment_id, list);
   }
 
-  return rows.map((s) => {
+  // 繪師後台只看自己商店的出貨訂單：透過商品的 artist_group_id 反查 teacher_id，
+  // 伺服器端過濾掉不屬於自己的出貨訂單（不是只靠前端不顯示）。
+  const teacherIdByShipmentId = new Map<string, string | null>();
+  if (artistTeacherId) {
+    const artistGroupIds = Array.from(
+      new Set(orderItemRows.map((oi) => oi.artist_group_id).filter((id): id is string => Boolean(id)))
+    );
+    const { data: artistGroups } =
+      artistGroupIds.length > 0
+        ? await supabase.from("artist_product_groups").select("id, teacher_id").in("id", artistGroupIds)
+        : { data: [] };
+    const teacherIdByGroupId = new Map((artistGroups ?? []).map((g) => [g.id, g.teacher_id]));
+    for (const [shipmentId, shipmentItemRows] of itemsByShipment) {
+      const firstWithGroup = shipmentItemRows
+        .map((si) => orderItemMap.get(si.order_item_id))
+        .find((oi) => oi?.artist_group_id);
+      teacherIdByShipmentId.set(
+        shipmentId,
+        firstWithGroup?.artist_group_id ? teacherIdByGroupId.get(firstWithGroup.artist_group_id) ?? null : null
+      );
+    }
+  }
+
+  const scopedRows = artistTeacherId ? rows.filter((s) => teacherIdByShipmentId.get(s.id) === artistTeacherId) : rows;
+
+  return scopedRows.map((s) => {
     const shipmentItems = itemsByShipment.get(s.id) ?? [];
     const shipmentOrderIds = Array.from(new Set(shipmentItems.map((i) => i.order_id)));
     const orderNumbers = Array.from(
@@ -198,8 +235,8 @@ export async function getShipments(): Promise<AdminShipment[]> {
       const { amount: surchargeAmount, reason: surchargeReason } = getEffectiveSurcharge(group, variant);
       return {
         productName: oi?.product_name ?? "-",
-        productGroupName: oi?.product_group_name ?? null,
-        variantName: oi?.variant_name ?? null,
+        productGroupName: oi?.product_group_name ?? oi?.artist_group_name ?? null,
+        variantName: oi?.variant_name ?? oi?.artist_variant_name ?? null,
         teacherName: oi?.teacher_name ?? null,
         quantity: oi?.quantity ?? 0,
         price: Number(oi?.price ?? 0),
@@ -270,6 +307,12 @@ export async function getShipments(): Promise<AdminShipment[]> {
       supplementStatus,
       createdAt: s.created_at,
       printedAt: s.printed_at,
+      buyerNote: s.buyer_note,
+      completedAt: s.completed_at,
+      completedByRole: s.completed_by_role,
+      completedByLabel: s.completed_by_label,
+      exportedAt: s.exported_at,
+      exportBatchId: s.export_batch_id,
     };
   });
 }

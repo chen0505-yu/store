@@ -50,6 +50,10 @@ create table if not exists member_addresses (
 -- ---------------------------------------------------------------------------
 -- preorder_starts_at / preorder_ends_at：整間老師賣場共用一個預購期間，
 -- 底下所有品項／細項都共用，不需要每個商品各自設定預購時間。
+-- is_artist_shop / remittance_* / bank_* / marketplace_note：繪師預購專區用，只有繪師自己
+-- 的老師 row 會設定（透過 admin_users.teacher_id 連結），葴葴自己的老師 row 全部留空，繼續
+-- 使用全站 payment_settings 帳戶。payment_provider / virtual_account_number 保留給未來第三方
+-- 支付／固定虛擬帳號擴充，本次不實作。
 create table if not exists teachers (
   id uuid primary key default gen_random_uuid(),
   teacher_code text unique not null,
@@ -61,8 +65,21 @@ create table if not exists teachers (
   preorder_starts_at timestamptz,
   preorder_ends_at timestamptz,
   allow_event_pickup boolean not null default false,
+  is_artist_shop boolean not null default false,
+  remittance_starts_at timestamptz,
+  remittance_ends_at timestamptz,
+  bank_name text,
+  bank_code text,
+  account_name text,
+  account_number text,
+  remittance_note text,
+  marketplace_note text,
+  payment_provider text,
+  virtual_account_number text,
   created_at timestamptz not null default now()
 );
+
+create index if not exists teachers_is_artist_shop_idx on teachers(is_artist_shop);
 
 -- teacher_images：老師賣場封面圖（老師層級，不是每個細項各自的圖片），
 -- 第一張（sort_order 最小）當作前台老師卡片封面，賣場頁可以顯示多張。
@@ -248,6 +265,56 @@ create table if not exists instock_product_variants (
   created_at timestamptz not null default now()
 );
 
+-- ---------------------------------------------------------------------------
+-- 繪師預購商品架構（平台調整：拆分葴葴預購與繪師預購）：老師 → 品項
+-- （artist_product_groups） → 細項（artist_product_variants），跟葴葴預購
+-- （product_groups/product_variants）架構完全對應，但獨立建表——葴葴商品與繪師商品
+-- 不可放入同一購物車／訂單，teacher_id 指向同一張 teachers 表
+-- （is_artist_shop = true 的那些老師 row）。
+-- ---------------------------------------------------------------------------
+create table if not exists artist_product_groups (
+  id uuid primary key default gen_random_uuid(),
+  teacher_id uuid not null references teachers(id) on delete cascade,
+  name text not null,
+  price numeric(10, 2) not null default 0,
+  image_url text,
+  tags text[] not null default '{}',
+  sort_order int not null default 0,
+  arrival_status product_arrival_status not null default 'preordering',
+  is_archived boolean not null default false,
+  is_blind_draw boolean not null default false,
+  blind_draw_threshold_qty int,
+  blind_draw_pick_qty int,
+  is_cp_spoiler boolean not null default false,
+  surcharge_amount numeric(10, 2),
+  surcharge_reason text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists artist_product_groups_teacher_id_idx on artist_product_groups(teacher_id);
+
+create table if not exists artist_product_group_images (
+  id uuid primary key default gen_random_uuid(),
+  artist_product_group_id uuid not null references artist_product_groups(id) on delete cascade,
+  image_url text not null,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists artist_product_variants (
+  id uuid primary key default gen_random_uuid(),
+  artist_product_group_id uuid not null references artist_product_groups(id) on delete cascade,
+  name text not null,
+  sort_order int not null default 0,
+  is_active boolean not null default true,
+  is_bonus_option boolean not null default false,
+  surcharge_amount numeric(10, 2),
+  surcharge_reason text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists artist_product_variants_group_id_idx on artist_product_variants(artist_product_group_id);
+
 -- product_tags：保留供未來標籤管理介面使用，Phase1 標籤直接存於 products.tags。
 create table if not exists product_tags (
   id uuid primary key default gen_random_uuid(),
@@ -278,6 +345,8 @@ do $$ begin
   create type order_type as enum ('preorder', 'instock');
 exception when duplicate_object then null;
 end $$;
+
+alter type order_type add value if not exists 'artist';
 
 -- 訂單編號序號：LT000001 格式（docs/06_Order_Flow.md）
 create sequence if not exists order_number_seq start 1;
@@ -343,6 +412,10 @@ create table if not exists order_items (
   variant_name text,
   instock_group_id uuid references instock_product_groups(id) on delete set null,
   instock_variant_id uuid references instock_product_variants(id) on delete set null,
+  artist_group_id uuid references artist_product_groups(id) on delete set null,
+  artist_group_name text,
+  artist_variant_id uuid references artist_product_variants(id) on delete set null,
+  artist_variant_name text,
   quantity int not null,
   price numeric(10, 2) not null,
   subtotal numeric(10, 2) generated always as (price * quantity) stored,
@@ -408,9 +481,10 @@ create table if not exists supplements (
 );
 
 -- admin_users：後台管理員帳號，跟一般會員（members）、POS 員工（pos_staff）完全分開。
--- role：admin 可使用全部後台功能；artist（繪師）先預留角色，登入後只會看到「尚未開放」頁面。
+-- role：super_admin 可使用全部後台管理功能；artist（繪師）只能管理自己的商店
+-- （商品／匯款設定／訂單／出貨／Dashboard），伺服器端一律用 teacher_id 過濾，不只是前端隱藏。
 do $$ begin
-  create type admin_role as enum ('admin', 'artist');
+  create type admin_role as enum ('super_admin', 'artist');
 exception when duplicate_object then null;
 end $$;
 
@@ -419,10 +493,13 @@ create table if not exists admin_users (
   username text unique not null,
   password_hash text not null,
   display_name text not null,
-  role admin_role not null default 'admin',
+  role admin_role not null default 'super_admin',
+  teacher_id uuid references teachers(id) on delete set null,
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
+
+create index if not exists admin_users_teacher_id_idx on admin_users(teacher_id);
 
 create table if not exists admin_sessions (
   id uuid primary key default gen_random_uuid(),
@@ -517,6 +594,10 @@ $$;
 -- 原始預購訂單（orders）不會被刪除或修改，出貨訂單是另外新增的一筆紀錄。
 -- marketplace_order_number：出貨訂單「已開賣貨便」後，買家回填的賣貨便訂單編號，
 -- 綁定在出貨訂單本身，不是單一商品或單一預購訂單，因為一筆出貨訂單可能包含買家的多筆平台訂單。
+-- buyer_note：買家可自行新增/修改的備註（不能改商品/金額/取貨方式）。completed_at/
+-- completed_by_role/completed_by_label：買家本人、所屬繪師、或 super_admin 任一身分按下
+-- 「完成訂單」都會記錄下來。exported_at/export_batch_id：「已完成訂單」頁面批量匯出 Excel
+-- 後才會有值，是批量永久刪除的必要條件之一（見 delete_completed_shipments）。
 create table if not exists shipments (
   id uuid primary key default gen_random_uuid(),
   shipment_number text unique not null default next_shipment_number(),
@@ -525,10 +606,18 @@ create table if not exists shipments (
   user_id uuid references members(id) on delete set null,
   customer_name text,
   marketplace_order_number text,
+  buyer_note text,
+  completed_at timestamptz,
+  completed_by_role text check (completed_by_role in ('member', 'artist', 'super_admin')),
+  completed_by_label text,
+  exported_at timestamptz,
+  export_batch_id uuid,
   shipped_at timestamptz,
   printed_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+create index if not exists shipments_export_batch_id_idx on shipments(export_batch_id);
 
 -- shipment_items：合併出貨的最小單位是「一件商品」，不是「一張訂單」。
 -- 同一張訂單裡，已到貨的商品可以先合併出貨，未到貨的商品保留、等到貨後再出。
@@ -542,6 +631,113 @@ create table if not exists shipment_items (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- export_batches：「已完成訂單」頁面每次批量匯出 Excel 建立一筆批次紀錄，追蹤誰在什麼時候
+-- 匯出了哪些出貨訂單（shipments.export_batch_id 指向這裡）。
+create table if not exists export_batches (
+  id uuid primary key default gen_random_uuid(),
+  exported_by_admin_id uuid references admin_users(id) on delete set null,
+  exported_by_label text,
+  row_count int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- artist_zone_ads：繪師預購專區首頁最上方的廣告區，只有 super_admin 可以管理。
+create table if not exists artist_zone_ads (
+  id uuid primary key default gen_random_uuid(),
+  image_url text,
+  title text not null,
+  description text,
+  link_url text,
+  is_visible boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- delete_completed_shipments：「已完成訂單」批量永久刪除，比照 POS 模組既有的 plpgsql
+-- function + for update 鎖 + raise exception 整批回滾寫法（見 pos_process_return /
+-- pos_delete_event_cascade）。任何一筆出貨訂單不符合條件（未完成／未匯出過／還有未完成的
+-- 匯款或補款）就整批中止。刪除範圍：出貨訂單本身，以及「所有商品都在這次刪除範圍內」的原始
+-- 訂單（連同底下的 order_items/payments/supplements/order_messages/order_bonus_selections，
+-- 靠既有的 on delete cascade 外鍵自動清除）；如果一張訂單的商品分散在多張出貨單、這次只刪
+-- 其中一張，訂單本身跟殘留在其他出貨單的商品都會保留。
+create or replace function delete_completed_shipments(p_shipment_ids uuid[])
+returns jsonb
+language plpgsql
+as $$
+declare
+  v_id uuid;
+  v_shipment shipments%rowtype;
+  v_order_id uuid;
+  v_deleted_shipment_count int := 0;
+  v_deleted_order_count int := 0;
+begin
+  if p_shipment_ids is null or array_length(p_shipment_ids, 1) is null then
+    raise exception '沒有選擇任何出貨訂單';
+  end if;
+
+  for v_id in select unnest(p_shipment_ids)
+  loop
+    select * into v_shipment from shipments where id = v_id for update;
+    if not found then
+      raise exception '找不到出貨訂單（id: %）', v_id;
+    end if;
+    if v_shipment.status <> 'completed' then
+      raise exception '出貨訂單 % 尚未完成，無法刪除', v_shipment.shipment_number;
+    end if;
+    if v_shipment.export_batch_id is null then
+      raise exception '出貨訂單 % 尚未匯出 Excel，無法刪除', v_shipment.shipment_number;
+    end if;
+
+    if exists (
+      select 1
+      from shipment_items si
+      join orders o on o.id = si.order_id
+      where si.shipment_id = v_id
+        and o.payment_status is not null
+        and o.payment_status not in ('confirmed', 'cancelled')
+    ) then
+      raise exception '出貨訂單 % 仍有未完成的匯款，無法刪除', v_shipment.shipment_number;
+    end if;
+
+    if exists (
+      select 1
+      from shipment_items si
+      join supplements s on s.order_id = si.order_id
+      where si.shipment_id = v_id
+        and s.status = 'pending'
+    ) then
+      raise exception '出貨訂單 % 仍有未完成的補款／二補，無法刪除', v_shipment.shipment_number;
+    end if;
+  end loop;
+
+  for v_id in select unnest(p_shipment_ids)
+  loop
+    for v_order_id in
+      select distinct order_id from shipment_items where shipment_id = v_id
+    loop
+      if not exists (
+        select 1
+        from shipment_items si2
+        where si2.order_id = v_order_id
+          and (si2.shipment_id is null or not (si2.shipment_id = any(p_shipment_ids)))
+      ) then
+        delete from orders where id = v_order_id;
+        v_deleted_order_count := v_deleted_order_count + 1;
+      end if;
+    end loop;
+
+    delete from shipment_items where shipment_id = v_id;
+    delete from shipments where id = v_id;
+    v_deleted_shipment_count := v_deleted_shipment_count + 1;
+  end loop;
+
+  return jsonb_build_object(
+    'deleted_shipment_count', v_deleted_shipment_count,
+    'deleted_order_count', v_deleted_order_count
+  );
+end;
+$$;
 
 -- votes / vote_items：Phase3 投票系統使用，投票沒有價格、庫存、購物車。
 create table if not exists votes (
@@ -576,6 +772,11 @@ alter table event_pickup_options enable row level security;
 alter table instock_product_groups enable row level security;
 alter table instock_product_group_images enable row level security;
 alter table instock_product_variants enable row level security;
+alter table artist_product_groups enable row level security;
+alter table artist_product_group_images enable row level security;
+alter table artist_product_variants enable row level security;
+alter table export_batches enable row level security;
+alter table artist_zone_ads enable row level security;
 alter table members enable row level security;
 alter table member_sessions enable row level security;
 alter table member_addresses enable row level security;
@@ -644,6 +845,22 @@ create policy "public read instock product group images" on instock_product_grou
 drop policy if exists "public read instock product variants" on instock_product_variants;
 create policy "public read instock product variants" on instock_product_variants
   for select using (is_active = true);
+
+drop policy if exists "public read artist product groups" on artist_product_groups;
+create policy "public read artist product groups" on artist_product_groups
+  for select using (is_archived = false);
+
+drop policy if exists "public read artist product group images" on artist_product_group_images;
+create policy "public read artist product group images" on artist_product_group_images
+  for select using (true);
+
+drop policy if exists "public read artist product variants" on artist_product_variants;
+create policy "public read artist product variants" on artist_product_variants
+  for select using (is_active = true);
+
+drop policy if exists "public read visible artist zone ads" on artist_zone_ads;
+create policy "public read visible artist zone ads" on artist_zone_ads
+  for select using (is_visible = true);
 
 drop policy if exists "public read instock settings" on instock_settings;
 create policy "public read instock settings" on instock_settings

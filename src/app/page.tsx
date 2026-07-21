@@ -15,24 +15,24 @@ export default async function Home() {
         <p className="mt-2 text-zinc-500">同人商品預購與現貨販售平台</p>
       </div>
 
-      {/* 首頁雙入口：預購與現貨從這裡開始完全分流 */}
+      {/* 首頁雙入口：葴葴預購與繪師預購從這裡開始完全分流（現貨專區入口移除，資料與路由保留） */}
       <div className="grid w-full max-w-3xl grid-cols-1 gap-6 sm:grid-cols-2">
         <Link
           href="/preorder"
           className="flex flex-col items-center gap-3 rounded-3xl bg-gradient-to-br from-purple-400 to-purple-300 p-10 text-white shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
         >
           <span className="text-4xl">📦</span>
-          <h2 className="text-xl font-bold">預購專區</h2>
+          <h2 className="text-xl font-bold">葴葴預購專區</h2>
           <p className="text-sm text-white/80">下單 → 匯款 → 到貨後合併出貨</p>
         </Link>
 
         <Link
-          href="/instock"
+          href="/artist"
           className="flex flex-col items-center gap-3 rounded-3xl bg-gradient-to-br from-pink-400 to-pink-300 p-10 text-white shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
         >
-          <span className="text-4xl">🛍️</span>
-          <h2 className="text-xl font-bold">現貨專區</h2>
-          <p className="text-sm text-white/80">下單 → 賣貨便付款 → 完成</p>
+          <span className="text-4xl">🎨</span>
+          <h2 className="text-xl font-bold">繪師預購專區</h2>
+          <p className="text-sm text-white/80">下單 → 匯款 → 到貨後合併出貨</p>
         </Link>
       </div>
 

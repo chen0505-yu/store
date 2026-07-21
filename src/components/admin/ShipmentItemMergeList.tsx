@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { AdminShipmentItem } from "@/lib/data/admin-shipment-items";
 import type { OrderType } from "@/lib/types";
 import { mergeShipmentItems, mergeShipmentItemsBatch, type BatchMergeResult } from "@/lib/actions/shipments";
-import { deletePreorderOrder } from "@/lib/actions/orders";
 import { MERGEABLE_SHIPMENT_STATUSES, getDisplayShipmentStatusLabel } from "@/lib/shipment-status";
 import { OrderPaymentPanel } from "./OrderPaymentPanel";
 import { OrderMessages } from "@/components/OrderMessages";
@@ -35,6 +34,12 @@ function itemPickupMethod(item: AdminShipmentItem): "shipment" | "event_pickup" 
   return item.pickupMethod === "event_pickup" ? "event_pickup" : "shipment";
 }
 
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface BuyerGroup {
   buyerId: string;
   customerName: string | null;
@@ -46,10 +51,15 @@ interface BuyerGroup {
 export function ShipmentItemMergeList({
   items,
   orderType,
+  deleteOrderAction,
 }: {
   items: AdminShipmentItem[];
   orderType: OrderType;
+  deleteOrderAction: (orderId: string) => Promise<{ success: boolean; message: string }>;
 }) {
+  // 葴葴預購（preorder）跟繪師預購（artist）都要看得到匯款狀態/批量合併/進度條這些功能，
+  // 只有現貨（instock）走賣貨便付款、沒有匯款流程，維持原本不顯示這些區塊。
+  const showRemittanceFeatures = orderType !== "instock";
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedBuyers, setSelectedBuyers] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -89,7 +99,7 @@ export function ShipmentItemMergeList({
   function handleDeleteOrder(orderId: string) {
     if (!window.confirm("確定要永久刪除此訂單嗎？此動作無法復原。")) return;
     startTransition(async () => {
-      const result = await deletePreorderOrder(orderId);
+      const result = await deleteOrderAction(orderId);
       setMessage(result.message);
       if (result.success) router.refresh();
     });
@@ -165,7 +175,7 @@ export function ShipmentItemMergeList({
       .filter((g) => selectedBuyers.includes(g.buyerId))
       .map((g) => ({ customerName: g.customerName, itemIds: g.allItems.map((i) => i.id) }));
     startTransition(async () => {
-      const result = await mergeShipmentItemsBatch(groups);
+      const result = await mergeShipmentItemsBatch(groups, orderType);
       setBatchResult(result);
       if (result.success) {
         setSelectedBuyers([]);
@@ -231,7 +241,7 @@ export function ShipmentItemMergeList({
       <div className="flex items-center justify-between">
         <p className="text-sm text-zinc-500">
           已選擇 {selected.length} 件商品
-          {orderType === "preorder" && "（只能選擇已到台、整理中或已開賣貨便、尚未合併的商品）"}
+          {showRemittanceFeatures && "（只能選擇已到台、整理中或已開賣貨便、尚未合併的商品）"}
           {hasCrossBuyerSelection && (
             <span className="ml-2 text-red-500">選取的商品跨了不同買家，請重新勾選</span>
           )}
@@ -250,7 +260,7 @@ export function ShipmentItemMergeList({
         </button>
       </div>
 
-      {orderType === "preorder" && (
+      {showRemittanceFeatures && (
         <div className="flex items-center justify-between rounded-2xl bg-purple-50/40 p-3">
           <p className="text-sm text-zinc-500">
             已勾選 {selectedBuyers.length} 位買家
@@ -287,7 +297,7 @@ export function ShipmentItemMergeList({
             <div key={group.buyerId} className="flex flex-col gap-3 rounded-3xl bg-purple-50/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-start gap-2">
-                  {orderType === "preorder" && (
+                  {showRemittanceFeatures && (
                     <input
                       type="checkbox"
                       className="mt-1"
@@ -304,7 +314,7 @@ export function ShipmentItemMergeList({
                     </p>
                   </div>
                 </div>
-                {orderType === "preorder" && eligibleGroups.size > 0 && (
+                {showRemittanceFeatures && eligibleGroups.size > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     {Array.from(eligibleGroups.entries()).map(([key, entry]) => (
                       <button
@@ -330,13 +340,21 @@ export function ShipmentItemMergeList({
                           <span className="font-mono font-semibold text-purple-600">
                             {orderItems[0].orderNumber}
                           </span>
+                          {orderType === "artist" && orderItems[0].teacherName && (
+                            <span className="ml-2 rounded-full bg-pink-100 px-2 py-0.5 text-xs font-semibold text-pink-600">
+                              {orderItems[0].teacherName}
+                            </span>
+                          )}
                           <span className="ml-2 text-xs text-zinc-400">
                             {orderItems.length} 件商品　訂單總金額 NT${" "}
                             {orderItems.reduce((sum, i) => sum + i.subtotal, 0)}
                           </span>
+                          <span className="ml-2 text-xs text-zinc-400">
+                            建立時間：{formatTime(orderItems[0].createdAt)}
+                          </span>
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                          {orderType === "preorder" && (
+                          {showRemittanceFeatures && (
                             <OrderPaymentPanel
                               orderId={orderId}
                               paymentStatus={orderItems[0].paymentStatus}
@@ -355,7 +373,7 @@ export function ShipmentItemMergeList({
                       </div>
                     }
                   >
-                    {orderType === "preorder" && (
+                    {showRemittanceFeatures && (
                       <div className="mb-2 rounded-2xl bg-purple-50/50 p-3">
                         <ProgressStepper
                           steps={PREORDER_ORDER_PROGRESS_STEPS}
@@ -405,7 +423,7 @@ export function ShipmentItemMergeList({
                                   賣貨便訂單編號：{item.shipmentMarketplaceOrderNumber}
                                 </p>
                               )}
-                              {orderType === "preorder" && (
+                              {showRemittanceFeatures && (
                                 <div className="mt-1.5 max-w-xs">
                                   <ProgressStepper
                                     steps={PRODUCT_PROGRESS_STEPS}
@@ -457,6 +475,9 @@ export function ShipmentItemMergeList({
                           ? `活動現場取貨（${orderItems[0].eventPickupDisplayName ?? "-"}）`
                           : "賣貨便配送"}
                       </p>
+                    )}
+                    {orderItems[0].buyerNote && (
+                      <p className="mt-1 text-xs text-pink-600">買家備註：{orderItems[0].buyerNote}</p>
                     )}
                     {orderItems[0].bonusSelections.length > 0 && (
                       <div className="mt-2 flex flex-col gap-1 rounded-xl bg-purple-50/60 p-2">

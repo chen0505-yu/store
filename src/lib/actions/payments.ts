@@ -43,7 +43,7 @@ export async function submitPayment(
     .select("id")
     .eq("id", orderId)
     .eq("user_id", member.id)
-    .eq("order_type", "preorder")
+    .in("order_type", ["preorder", "artist"])
     .maybeSingle();
 
   if (!order) {
@@ -72,5 +72,7 @@ export async function submitPayment(
 
   revalidatePath("/member/preorder-orders");
   revalidatePath("/admin/preorder-orders");
+  revalidatePath("/member/artist-orders");
+  revalidatePath("/admin/artist/orders");
   return { success: true, message: "已提交匯款資料，請等待後台確認" };
 }

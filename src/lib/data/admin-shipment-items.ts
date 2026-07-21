@@ -36,6 +36,8 @@ export interface AdminShipmentItem {
   messages: OrderMessageView[];
   arrivalStatus: ArrivalStatus | null; // 只用於預購：品項目前的到貨狀態（商品進度條用，見 src/lib/progress.ts）
   merged: boolean; // 這筆訂單的這件商品是否已經合併出貨（商品進度第 4 階段判斷用）
+  createdAt: string;
+  buyerNote: string | null; // 商品已合併出貨後，買家在出貨單上填的備註；尚未合併則為 null
 }
 
 interface ShipmentItemRow {
@@ -53,6 +55,9 @@ interface OrderItemLookupRow {
   product_group_id: string | null;
   product_group_name: string | null;
   variant_name: string | null;
+  artist_group_id: string | null;
+  artist_group_name: string | null;
+  artist_variant_name: string | null;
   quantity: number;
   price: number;
   subtotal: number;
@@ -67,12 +72,15 @@ interface OrderLookupRow {
   pickup_method: "shipment" | "event_pickup" | null;
   event_pickup_display_name: string | null;
   total_amount: number;
+  created_at: string;
 }
 
 // 後台訂單頁的合併出貨清單：以「每一件商品」為單位顯示狀態，
 // 而不是整張訂單，才能支援同一張訂單內分批出貨。
+// artistTeacherId：繪師後台只看自己商店的品項，伺服器端過濾（不是只靠前端不顯示）。
 export async function getShipmentItemsForAdmin(
-  orderType: OrderType
+  orderType: OrderType,
+  artistTeacherId?: string
 ): Promise<AdminShipmentItem[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) return [];
@@ -109,13 +117,13 @@ export async function getShipmentItemsForAdmin(
     supabase
       .from("order_items")
       .select(
-        "id, product_name, teacher_name, product_group_id, product_group_name, variant_name, quantity, price, subtotal"
+        "id, product_name, teacher_name, product_group_id, product_group_name, variant_name, artist_group_id, artist_group_name, artist_variant_name, quantity, price, subtotal"
       )
       .in("id", orderItemIds),
     supabase
       .from("orders")
       .select(
-        "id, order_number, customer_name, user_id, payment_status, pickup_method, event_pickup_display_name, total_amount"
+        "id, order_number, customer_name, user_id, payment_status, pickup_method, event_pickup_display_name, total_amount, created_at"
       )
       .in("id", orderIds),
     supabase
@@ -127,7 +135,7 @@ export async function getShipmentItemsForAdmin(
       .select("order_id, amount, reason, status, payment_method, note")
       .in("order_id", orderIds),
     shipmentIds.length > 0
-      ? supabase.from("shipments").select("id, marketplace_order_number").in("id", shipmentIds)
+      ? supabase.from("shipments").select("id, marketplace_order_number, buyer_note").in("id", shipmentIds)
       : Promise.resolve({ data: [] }),
     supabase
       .from("order_bonus_selections")
@@ -135,20 +143,22 @@ export async function getShipmentItemsForAdmin(
       .in("order_id", orderIds),
   ]);
 
+  const groupTable = orderType === "artist" ? "artist_product_groups" : "product_groups";
   const groupIds = Array.from(
     new Set(
       ((orderItems ?? []) as OrderItemLookupRow[])
-        .map((oi) => oi.product_group_id)
+        .map((oi) => (orderType === "artist" ? oi.artist_group_id : oi.product_group_id))
         .filter((id): id is string => Boolean(id))
     )
   );
   const { data: groups } =
     groupIds.length > 0
-      ? await supabase.from("product_groups").select("id, arrival_status").in("id", groupIds)
+      ? await supabase.from(groupTable).select("id, arrival_status, teacher_id").in("id", groupIds)
       : { data: [] };
   const arrivalStatusByGroupId = new Map<string, ArrivalStatus | null>(
     (groups ?? []).map((g) => [g.id, g.arrival_status])
   );
+  const teacherIdByGroupId = new Map<string, string>((groups ?? []).map((g) => [g.id, g.teacher_id]));
 
   const orderItemMap = new Map<string, OrderItemLookupRow>(
     ((orderItems ?? []) as OrderItemLookupRow[]).map((oi) => [oi.id, oi])
@@ -159,6 +169,9 @@ export async function getShipmentItemsForAdmin(
   const paymentMap = new Map((payments ?? []).map((p) => [p.order_id, p]));
   const shipmentMarketplaceMap = new Map<string, string | null>(
     (shipments ?? []).map((s) => [s.id, s.marketplace_order_number])
+  );
+  const shipmentBuyerNoteMap = new Map<string, string | null>(
+    (shipments ?? []).map((s) => [s.id, s.buyer_note])
   );
   const supplementsMap = new Map<string, SupplementView[]>();
   for (const s of supplements ?? []) {
@@ -189,6 +202,8 @@ export async function getShipmentItemsForAdmin(
     const oi = orderItemMap.get(r.order_item_id);
     const order = orderMap.get(r.order_id);
     if (!oi || !order) continue;
+    const groupId = orderType === "artist" ? oi.artist_group_id : oi.product_group_id;
+    if (artistTeacherId && (!groupId || teacherIdByGroupId.get(groupId) !== artistTeacherId)) continue;
     const payment = paymentMap.get(r.order_id);
     result.push({
       id: r.id,
@@ -198,8 +213,8 @@ export async function getShipmentItemsForAdmin(
       customerName: order.customer_name,
       productName: oi.product_name,
       teacherName: oi.teacher_name,
-      productGroupName: oi.product_group_name,
-      variantName: oi.variant_name,
+      productGroupName: orderType === "artist" ? oi.artist_group_name : oi.product_group_name,
+      variantName: orderType === "artist" ? oi.artist_variant_name : oi.variant_name,
       quantity: oi.quantity,
       price: Number(oi.price),
       subtotal: Number(oi.subtotal),
@@ -227,8 +242,10 @@ export async function getShipmentItemsForAdmin(
       pickupMethod: order.pickup_method,
       eventPickupDisplayName: order.event_pickup_display_name,
       messages: messagesByOrderId.get(r.order_id) ?? [],
-      arrivalStatus: oi.product_group_id ? arrivalStatusByGroupId.get(oi.product_group_id) ?? null : null,
+      arrivalStatus: groupId ? arrivalStatusByGroupId.get(groupId) ?? null : null,
       merged: Boolean(r.shipment_id),
+      createdAt: order.created_at,
+      buyerNote: r.shipment_id ? shipmentBuyerNoteMap.get(r.shipment_id) ?? null : null,
     });
   }
   return result;

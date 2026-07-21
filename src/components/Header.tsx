@@ -24,10 +24,10 @@ export async function Header() {
         </Link>
         <nav className="hidden items-center gap-4 text-sm font-medium text-purple-600 md:flex">
           <Link href="/preorder" className="hover:text-purple-800">
-            預購專區
+            葴葴預購專區
           </Link>
-          <Link href="/instock" className="hover:text-purple-800">
-            現貨專區
+          <Link href="/artist" className="hover:text-purple-800">
+            繪師預購專區
           </Link>
           <Link href="/member" className="hover:text-purple-800">
             會員中心
@@ -51,9 +51,11 @@ export async function Header() {
               </Link>
             </>
           )}
-          <Link href="/admin" className="text-xs text-zinc-400 hover:text-purple-800">
-            後台
-          </Link>
+          {admin && (
+            <Link href="/admin" className="text-xs text-zinc-400 hover:text-purple-800">
+              後台
+            </Link>
+          )}
         </nav>
         <div className="md:hidden">
           <MobileNav memberName={member?.fbName ?? null} isAdmin={Boolean(admin)} />

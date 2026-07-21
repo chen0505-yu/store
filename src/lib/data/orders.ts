@@ -20,6 +20,10 @@ interface OrderItemRow {
   product_group_name: string | null;
   product_variant_id: string | null;
   variant_name: string | null;
+  artist_group_id: string | null;
+  artist_group_name: string | null;
+  artist_variant_id: string | null;
+  artist_variant_name: string | null;
   quantity: number;
   price: number;
   subtotal: number;
@@ -65,7 +69,7 @@ interface BonusSelectionRow {
 }
 
 const ORDER_ITEM_COLUMNS =
-  "id, product_id, product_name, teacher_name, product_group_id, product_group_name, product_variant_id, variant_name, quantity, price, subtotal";
+  "id, product_id, product_name, teacher_name, product_group_id, product_group_name, product_variant_id, variant_name, artist_group_id, artist_group_name, artist_variant_id, artist_variant_name, quantity, price, subtotal";
 
 // 依登入會員查詢「我的預購訂單」或「我的現貨訂單」，兩者查詢時皆以 order_type 篩選，
 // 確保預購與現貨訂單完全分流顯示。未登入時回傳空陣列（頁面會另外提示請先登入）。
@@ -116,12 +120,13 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
   const mergedByOrderItemId = new Map<string, boolean>();
   const shipmentStatusByOrderId = new Map<string, string[]>();
 
-  if (orderType === "preorder") {
+  if (orderType === "preorder" || orderType === "artist") {
+    const groupTable = orderType === "preorder" ? "product_groups" : "artist_product_groups";
     const groupIds = Array.from(
       new Set(
         rows.flatMap((o) =>
           (o.order_items ?? [])
-            .map((i) => i.product_group_id)
+            .map((i) => (orderType === "preorder" ? i.product_group_id : i.artist_group_id))
             .filter((id): id is string => Boolean(id))
         )
       )
@@ -131,7 +136,7 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
     const [{ data: groups }, { data: payments }, { data: supplements }, { data: shipmentItems }] =
       await Promise.all([
         groupIds.length > 0
-          ? supabase.from("product_groups").select("id, arrival_status").in("id", groupIds)
+          ? supabase.from(groupTable).select("id, arrival_status").in("id", groupIds)
           : Promise.resolve({ data: [] }),
         supabase
           .from("payments")
@@ -198,21 +203,22 @@ export async function getMyOrders(orderType: OrderType): Promise<Order[]> {
       status: o.status,
       totalAmount: Number(o.total_amount),
       createdAt: o.created_at,
-      items: orderItems.map((it) => ({
-        productName: it.product_name,
-        teacherName: it.teacher_name,
-        quantity: it.quantity,
-        price: Number(it.price),
-        subtotal: Number(it.subtotal),
-        productGroupName: it.product_group_name,
-        variantName: it.variant_name,
-        arrivalStatus: it.product_group_id
-          ? arrivalStatusByGroupId.get(it.product_group_id) ?? null
-          : null,
-        merged: mergedByOrderItemId.get(it.id) ?? false,
-      })),
+      items: orderItems.map((it) => {
+        const groupId = o.order_type === "artist" ? it.artist_group_id : it.product_group_id;
+        return {
+          productName: it.product_name,
+          teacherName: it.teacher_name,
+          quantity: it.quantity,
+          price: Number(it.price),
+          subtotal: Number(it.subtotal),
+          productGroupName: o.order_type === "artist" ? it.artist_group_name : it.product_group_name,
+          variantName: o.order_type === "artist" ? it.artist_variant_name : it.variant_name,
+          arrivalStatus: groupId ? arrivalStatusByGroupId.get(groupId) ?? null : null,
+          merged: mergedByOrderItemId.get(it.id) ?? false,
+        };
+      }),
       preorderProgressIndex:
-        o.order_type === "preorder"
+        (o.order_type === "preorder" || o.order_type === "artist")
           ? getPreorderOrderProgressIndex({
               paymentConfirmed: o.payment_status === "confirmed",
               allItemsMerged,

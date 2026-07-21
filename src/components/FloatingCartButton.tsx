@@ -3,18 +3,20 @@
 import Link from "next/link";
 import { usePreorderCart } from "@/lib/cart/use-preorder-cart";
 import { useInstockCart } from "@/lib/cart/use-instock-cart";
+import { useArtistCart } from "@/lib/cart/use-artist-cart";
 
-// 繪師賣場頁專用的浮動購物車按鈕：固定在右下角，是賣場頁唯一的購物車入口。
-export function FloatingCartButton({ cartType }: { cartType: "preorder" | "instock" }) {
+// 老師/繪師賣場頁專用的浮動購物車按鈕：固定在右下角，是賣場頁唯一的購物車入口。
+export function FloatingCartButton({ cartType }: { cartType: "preorder" | "instock" | "artist" }) {
   const preorderItems = usePreorderCart((s) => s.items);
   const instockItems = useInstockCart((s) => s.items);
+  const artistItems = useArtistCart((s) => s.items);
 
-  const items = cartType === "preorder" ? preorderItems : instockItems;
+  const items = cartType === "preorder" ? preorderItems : cartType === "instock" ? instockItems : artistItems;
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
   if (itemCount === 0) return null;
 
   const total = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
-  const href = cartType === "preorder" ? "/preorder/cart" : "/instock/cart";
+  const href = cartType === "preorder" ? "/preorder/cart" : cartType === "instock" ? "/instock/cart" : "/artist/cart";
 
   return (
     <Link

@@ -22,13 +22,6 @@ export default async function AdminDashboardPage() {
     { label: "已開賣貨便商品數", value: stats.listed },
   ];
 
-  const instockStats = [
-    { label: "現貨商品數", value: stats.instockTotal },
-    { label: "現貨售完商品數", value: stats.instockSoldOut },
-    { label: "待處理現貨訂單數", value: stats.instockPendingOrders },
-    { label: "已填賣貨便訂單編號的現貨訂單數", value: stats.instockFiledOrders },
-  ];
-
   return (
     <div className="flex flex-col gap-8">
       <h1 className="text-2xl font-bold text-purple-700">Dashboard</h1>
@@ -55,18 +48,6 @@ export default async function AdminDashboardPage() {
           {preorderStats.map((s) => (
             <div key={s.label} className="rounded-3xl bg-white p-5 text-center shadow-sm">
               <p className="text-3xl font-bold text-purple-600">{s.value}</p>
-              <p className="mt-1 text-sm text-zinc-500">{s.label}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h2 className="mb-3 text-sm font-semibold text-pink-500">現貨狀態</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {instockStats.map((s) => (
-            <div key={s.label} className="rounded-3xl bg-white p-5 text-center shadow-sm">
-              <p className="text-3xl font-bold text-pink-600">{s.value}</p>
               <p className="mt-1 text-sm text-zinc-500">{s.label}</p>
             </div>
           ))}

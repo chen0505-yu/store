@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCurrentMember } from "@/lib/auth";
+import { getCurrentAdmin } from "@/lib/admin-auth";
 import type { ArrivalStatus, PreorderPaymentStatus } from "@/lib/types";
 import type { PreorderCartItem } from "@/lib/cart/use-preorder-cart";
 import type { InstockCartItem } from "@/lib/cart/use-instock-cart";
@@ -23,8 +24,9 @@ export interface ActionResult {
 
 const BLACKLIST_MESSAGE = "您的帳號目前無法下單，請聯繫管理員。";
 
-// 後台設定預購訂單的匯款/付款狀態，只有「已確認」的訂單才會被列入
-// 「預購商品品項總數」統計（見 lib/data/preorder-stats.ts）。
+// 後台設定訂單的匯款/付款狀態，只有「已確認」的訂單才會被列入
+// 「預購商品品項總數」統計（見 lib/data/preorder-stats.ts）。葴葴預購（preorder）跟繪師
+// 預購（artist）都會用到；繪師角色只能確認自己商店的訂單，伺服器端依 teacher_id 驗證。
 export async function setOrderPaymentStatus(
   orderId: string,
   status: PreorderPaymentStatus
@@ -32,16 +34,45 @@ export async function setOrderPaymentStatus(
   const supabase = getSupabaseServerClient();
   if (!supabase) return { success: false, message: "尚未設定 Supabase" };
 
-  const { error } = await supabase
+  const { data: order } = await supabase
     .from("orders")
-    .update({ payment_status: status })
+    .select("id, order_type")
     .eq("id", orderId)
-    .eq("order_type", "preorder");
+    .in("order_type", ["preorder", "artist"])
+    .maybeSingle();
+  if (!order) return { success: false, message: "找不到這筆訂單" };
+
+  const admin = await getCurrentAdmin();
+  if (!admin) return { success: false, message: "沒有權限執行此操作" };
+
+  if (order.order_type === "artist") {
+    let authorized = admin.role === "super_admin";
+    if (!authorized && admin.role === "artist" && admin.teacherId) {
+      const { data: orderItems } = await supabase
+        .from("order_items")
+        .select("artist_group_id")
+        .eq("order_id", orderId);
+      const groupIds = Array.from(
+        new Set((orderItems ?? []).map((oi) => oi.artist_group_id).filter((id): id is string => Boolean(id)))
+      );
+      const { data: groups } =
+        groupIds.length > 0
+          ? await supabase.from("artist_product_groups").select("teacher_id").in("id", groupIds)
+          : { data: [] };
+      authorized = (groups ?? []).length > 0 && (groups ?? []).every((g) => g.teacher_id === admin.teacherId);
+    }
+    if (!authorized) return { success: false, message: "沒有權限執行此操作" };
+  } else if (admin.role !== "super_admin") {
+    return { success: false, message: "沒有權限執行此操作" };
+  }
+
+  const { error } = await supabase.from("orders").update({ payment_status: status }).eq("id", orderId);
 
   if (error) return { success: false, message: error.message };
 
   revalidatePath("/admin/preorder-orders");
   revalidatePath("/admin/product-stats");
+  revalidatePath("/admin/artist/orders");
   return { success: true, message: "已更新付款狀態" };
 }
 
