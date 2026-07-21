@@ -11,6 +11,8 @@ interface PosOrderItemRow {
   quantity: number;
   subtotal: number;
   is_freebie: boolean;
+  artist_id: string | null;
+  artist_name: string | null;
   pos_return_items: { quantity: number }[];
 }
 
@@ -29,6 +31,8 @@ interface PosOrderRow {
   received_amount: number;
   change_amount: number;
   created_at: string;
+  shared_group_id: string | null;
+  shared_group_name: string | null;
   pos_staff: { display_name: string } | null;
   pos_order_items: PosOrderItemRow[];
 }
@@ -36,7 +40,8 @@ interface PosOrderRow {
 const ORDER_SELECT =
   "id, order_number, event_id, event_name, event_day_label, event_booth_number, artist_id, artist_name, " +
   "staff_id, subtotal_amount, total_amount, received_amount, change_amount, created_at, " +
-  "pos_staff(display_name), pos_order_items(id, group_id, group_name, variant_id, variant_name, unit_price, quantity, subtotal, is_freebie, pos_return_items(quantity))";
+  "shared_group_id, shared_group_name, pos_staff(display_name), " +
+  "pos_order_items(id, group_id, group_name, variant_id, variant_name, unit_price, quantity, subtotal, is_freebie, artist_id, artist_name, pos_return_items(quantity))";
 
 function mapItem(row: PosOrderItemRow): PosOrderItem {
   return {
@@ -50,6 +55,8 @@ function mapItem(row: PosOrderItemRow): PosOrderItem {
     subtotal: Number(row.subtotal),
     isFreebie: row.is_freebie,
     returnedQuantity: (row.pos_return_items ?? []).reduce((sum, r) => sum + r.quantity, 0),
+    artistId: row.artist_id,
+    artistName: row.artist_name,
   };
 }
 
@@ -71,16 +78,45 @@ function mapOrder(row: PosOrderRow): PosOrder {
     changeAmount: Number(row.change_amount),
     createdAt: row.created_at,
     items: (row.pos_order_items ?? []).map(mapItem),
+    sharedGroupId: row.shared_group_id,
+    sharedGroupName: row.shared_group_name,
   };
 }
 
 export interface PosOrderFilter {
   eventId?: string;
   artistId?: string;
+  sharedGroupId?: string; // 給共用攤位收銀畫面的「最近訂單」查詢用
   dateFrom?: string; // yyyy-mm-dd
   dateTo?: string; // yyyy-mm-dd
   orderNumber?: string; // 局部比對，給 POS 前台「輸入訂單編號搜尋」用
   limit?: number;
+}
+
+// 依 Artist 篩選訂單時，不能只看 pos_orders.artist_id——共用攤位訂單的這個欄位只是
+// 「代表 Artist」快照，不代表商品真正的歸屬。改成找出「這位 Artist 真正有商品在裡面」
+// 的訂單 id：
+//   1) pos_order_items.artist_id 直接命中（一般訂單與共用攤位訂單都適用，是權威來源）。
+//   2) 非共用攤位的訂單（shared_group_id is null）用 pos_orders.artist_id 命中——這類訂單
+//      本來就是單一 Artist 的整筆訂單，即使是 migration 039 之前、明細 artist_id 還沒回填
+//      成功的舊資料，訂單層級的 artist_id 仍然是唯一且正確的判斷依據。
+// 兩者取聯集，避免共用攤位訂單因為「代表 Artist」剛好等於篩選對象、但實際上沒有該
+// Artist 商品」而被誤收進來。
+async function findOrderIdsForArtist(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  artistId: string
+): Promise<string[]> {
+  if (!supabase) return [];
+
+  const [itemMatches, nonSharedOrderMatches] = await Promise.all([
+    supabase.from("pos_order_items").select("order_id").eq("artist_id", artistId),
+    supabase.from("pos_orders").select("id").eq("artist_id", artistId).is("shared_group_id", null),
+  ]);
+
+  const ids = new Set<string>();
+  for (const row of (itemMatches.data ?? []) as { order_id: string }[]) ids.add(row.order_id);
+  for (const row of (nonSharedOrderMatches.data ?? []) as { id: string }[]) ids.add(row.id);
+  return [...ids];
 }
 
 export async function getPosOrders(filter: PosOrderFilter = {}): Promise<PosOrder[]> {
@@ -90,7 +126,12 @@ export async function getPosOrders(filter: PosOrderFilter = {}): Promise<PosOrde
   let query = supabase.from("pos_orders").select(ORDER_SELECT).order("created_at", { ascending: false });
 
   if (filter.eventId) query = query.eq("event_id", filter.eventId);
-  if (filter.artistId) query = query.eq("artist_id", filter.artistId);
+  if (filter.artistId) {
+    const orderIds = await findOrderIdsForArtist(supabase, filter.artistId);
+    if (orderIds.length === 0) return [];
+    query = query.in("id", orderIds);
+  }
+  if (filter.sharedGroupId) query = query.eq("shared_group_id", filter.sharedGroupId);
   if (filter.dateFrom) query = query.gte("created_at", `${filter.dateFrom}T00:00:00`);
   if (filter.dateTo) query = query.lte("created_at", `${filter.dateTo}T23:59:59`);
   if (filter.orderNumber) query = query.ilike("order_number", `%${filter.orderNumber}%`);

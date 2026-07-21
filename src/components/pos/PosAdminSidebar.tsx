@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/pos/admin", label: "Dashboard" },
   { href: "/pos/admin/events", label: "活動管理" },
   { href: "/pos/admin/artists", label: "繪師管理" },
+  { href: "/pos/admin/artist-groups", label: "共用攤位" },
   { href: "/pos/admin/products", label: "商品管理" },
   { href: "/pos/admin/freebies", label: "滿額贈品" },
   { href: "/pos/admin/orders", label: "訂單管理" },

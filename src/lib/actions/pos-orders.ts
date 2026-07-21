@@ -12,6 +12,9 @@ export interface PosCheckoutInput {
   receivedAmount: number;
   items: { groupId: string; quantity: number }[];
   freebieOptionIds?: string[];
+  // 共用攤位結帳才需要帶：artistId 這時只是「代表 Artist」快照，實際每個 item 的
+  // 所屬 Artist 由 pos_checkout() 依 group_id 自動解析，不是由前端傳入。
+  sharedGroupId?: string;
 }
 
 export interface PosCheckoutResult extends PosActionResult {
@@ -38,11 +41,16 @@ export async function checkoutPosOrder(input: PosCheckoutInput): Promise<PosChec
     p_received_amount: input.receivedAmount,
     p_items: input.items.map((i) => ({ group_id: i.groupId, quantity: i.quantity })),
     p_freebie_option_ids: input.freebieOptionIds ?? [],
+    p_shared_group_id: input.sharedGroupId ?? null,
   });
 
   if (error) return { success: false, message: error.message };
 
-  revalidatePath(`/pos/${input.eventId}/${input.artistId}`);
+  if (input.sharedGroupId) {
+    revalidatePath(`/pos/${input.eventId}/group/${input.sharedGroupId}`);
+  } else {
+    revalidatePath(`/pos/${input.eventId}/${input.artistId}`);
+  }
   revalidatePath("/pos/admin/orders");
   revalidatePath("/pos/admin/stats");
   revalidatePath("/pos/admin/reports");
@@ -67,4 +75,11 @@ export async function getRecentPosOrders(eventId: string, artistId: string): Pro
   const staff = await getCurrentStaff();
   if (!staff) return [];
   return getPosOrders({ eventId, artistId, limit: 20 });
+}
+
+// 共用攤位收銀畫面的退貨面板用：查這個共用群組（不是單一 Artist）的最近訂單。
+export async function getRecentPosOrdersForGroup(eventId: string, sharedGroupId: string): Promise<PosOrder[]> {
+  const staff = await getCurrentStaff();
+  if (!staff) return [];
+  return getPosOrders({ eventId, sharedGroupId, limit: 20 });
 }

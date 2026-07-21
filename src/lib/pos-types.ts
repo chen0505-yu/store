@@ -58,6 +58,11 @@ export interface PosOrderItem {
   subtotal: number;
   isFreebie: boolean;
   returnedQuantity: number;
+  // 這件商品實際所屬的 Artist（共用攤位訂單可能包含多位 Artist 的商品）。
+  // 舊資料（migration 039 之前建立、且商品/贈品規則已被刪除而回填不到）可能是 null，
+  // 這種情況才 fallback 用 PosOrder.artistId/artistName。
+  artistId: string | null;
+  artistName: string | null;
 }
 
 export interface PosReturn {
@@ -86,9 +91,24 @@ export interface PosOrder {
   changeAmount: number;
   createdAt: string;
   items: PosOrderItem[];
+  // 共用攤位訂單才有值；一般單一 Artist 訂單維持 null。有值時 artistId/artistName
+  // 只是「代表 Artist」快照，不能用來判斷這張訂單的商品歸屬，一律以 items[].artistId 為準。
+  sharedGroupId: string | null;
+  sharedGroupName: string | null;
+}
+
+// 共用攤位群組（例如「主攤」），底下可以掛多位 Artist 共用同一個 POS 收銀頁面。
+export interface PosArtistGroup {
+  id: string;
+  eventId: string;
+  name: string;
+  sortOrder: number;
+  memberArtistIds: string[];
 }
 
 // POS 收銀購物車：只到商品主項層級，沒有細項概念（小幫手不用選細項）。
+// artistId/artistName 只有共用攤位收銀畫面（PosSharedCashierView）會填，一般單一
+// Artist 收銀畫面不需要（該頁面本來就只服務一位 Artist，購物車不用特別標示）。
 export interface PosCartLine {
   groupId: string;
   groupName: string;
@@ -96,6 +116,8 @@ export interface PosCartLine {
   quantity: number;
   stockQuantity: number;
   note: string | null;
+  artistId?: string;
+  artistName?: string;
 }
 
 export type PosFreebieRuleType = "spend_threshold" | "buy_product";

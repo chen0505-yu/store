@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { PosOrder } from "@/lib/pos-types";
-import { searchPosOrdersByOrderNumber, getRecentPosOrders } from "@/lib/actions/pos-orders";
+import { searchPosOrdersByOrderNumber, getRecentPosOrders, getRecentPosOrdersForGroup } from "@/lib/actions/pos-orders";
 import { GlassCard } from "@/components/pos/GlassCard";
 import { PosReturnOrderPanel } from "@/components/pos/PosReturnOrderPanel";
 
@@ -13,7 +13,18 @@ import { PosReturnOrderPanel } from "@/components/pos/PosReturnOrderPanel";
 //
 // 最近訂單刻意不當作 prop 從收銀頁 server component 直接帶進來——多數時候小幫手
 // 整段收銀都不會按退貨，那份查詢就是白費，改成點退貨才即時查。
-export function PosCashierReturnFlow({ eventId, artistId }: { eventId: string; artistId: string }) {
+//
+// 共用攤位頁面傳 sharedGroupId（不傳 artistId）：最近訂單改查整個共用群組，
+// 而不是限定某一位代表 Artist——這台收銀機結出來的訂單本來就可能橫跨多位 Artist。
+export function PosCashierReturnFlow({
+  eventId,
+  artistId,
+  sharedGroupId,
+}: {
+  eventId: string;
+  artistId?: string;
+  sharedGroupId?: string;
+}) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -29,7 +40,11 @@ export function PosCashierReturnFlow({ eventId, artistId }: { eventId: string; a
     setSelectedOrder(null);
     setIsOpen(true);
     startLoadRecent(async () => {
-      setRecentOrders(await getRecentPosOrders(eventId, artistId));
+      setRecentOrders(
+        sharedGroupId
+          ? await getRecentPosOrdersForGroup(eventId, sharedGroupId)
+          : await getRecentPosOrders(eventId, artistId ?? "")
+      );
     });
   }
 

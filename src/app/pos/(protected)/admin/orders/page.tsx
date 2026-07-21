@@ -55,7 +55,15 @@ export default async function PosAdminOrdersPage({
                   boothNumber: order.eventBoothNumber,
                 })}
               </span>
-              <span>{order.artistName}</span>
+              <span>
+                {order.sharedGroupId ? (
+                  <span className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--pos-gold)", color: "#1a1140" }}>
+                    共用攤位・{order.sharedGroupName}
+                  </span>
+                ) : (
+                  order.artistName
+                )}
+              </span>
               <span className="text-[var(--pos-text-muted)]">小幫手：{order.staffName ?? "-"}</span>
               <span className="text-[var(--pos-text-muted)]">{new Date(order.createdAt).toLocaleString("zh-TW")}</span>
               <PosReturnButton order={order} />
@@ -74,6 +82,11 @@ export default async function PosAdminOrdersPage({
                 {order.items.map((item) => (
                   <tr key={item.id}>
                     <td className="py-1">
+                      {order.sharedGroupId && (
+                        <span className="mr-1 text-xs text-[var(--pos-text-muted)]">
+                          ［{item.artistName ?? order.artistName}］
+                        </span>
+                      )}
                       {item.groupName}
                       {item.variantName && <span> - {item.variantName}</span>}
                       {item.isFreebie && <span className="ml-1 text-xs text-[var(--pos-gold)]">（贈品）</span>}

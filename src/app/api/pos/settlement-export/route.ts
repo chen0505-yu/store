@@ -62,13 +62,19 @@ export async function GET(request: NextRequest) {
     { header: "找零", key: "changeAmount", width: 10 },
     { header: "小幫手", key: "staffName", width: 12 },
   ];
+  // 篩選單一繪師時，共用攤位訂單裡不屬於這位繪師的品項要排除，這份明細只給這位繪師
+  // 自己核對用；沒有篩選繪師（整場活動匯出）才需要看到每個品項各自的繪師欄位分辨歸屬。
   for (const order of orders) {
-    for (const item of order.items) {
+    const items = artistId
+      ? order.items.filter((item) => (item.artistId ?? order.artistId) === artistId)
+      : order.items;
+
+    for (const item of items) {
       orderSheet.addRow({
         orderNumber: order.orderNumber,
         createdAt: formatDateForExcel(order.createdAt),
         eventName: order.eventName,
-        artistName: order.artistName,
+        artistName: item.artistName ?? order.artistName,
         productName: item.variantName ? `${item.groupName} - ${item.variantName}` : item.groupName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
