@@ -6,6 +6,7 @@ import { getUniqueTeacherCode } from "@/lib/teacher-code";
 import type { ArrivalStatus } from "@/lib/types";
 import { PREORDER_STATUS_LABEL } from "@/lib/product-status";
 import { mapArrivalStatusToShipmentStatus } from "@/lib/shipment-status";
+import { getGroupDeletePreview, permanentlyDeleteGroup, type GroupDeletePreview } from "@/lib/product-group-delete";
 
 export interface ActionResult {
   success: boolean;
@@ -259,7 +260,38 @@ export async function archiveProductGroup(groupId: string): Promise<ActionResult
   if (error) return { success: false, message: error.message };
 
   revalidateShopPaths();
+  revalidatePath("/admin/archived-products");
   return { success: true, message: "已封存品項" };
+}
+
+export async function restoreProductGroup(groupId: string): Promise<ActionResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const { error } = await supabase.from("product_groups").update({ is_archived: false }).eq("id", groupId);
+  if (error) return { success: false, message: error.message };
+
+  revalidateShopPaths();
+  revalidatePath("/admin/archived-products");
+  return { success: true, message: "已恢復品項" };
+}
+
+export async function getProductGroupDeletePreview(groupId: string): Promise<GroupDeletePreview | null> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
+  return getGroupDeletePreview(supabase, "preorder", groupId);
+}
+
+export async function permanentlyDeleteProductGroup(groupId: string): Promise<ActionResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const result = await permanentlyDeleteGroup(supabase, "preorder", groupId);
+  if (!result.success) return { success: false, message: result.message };
+
+  revalidateShopPaths();
+  revalidatePath("/admin/archived-products");
+  return { success: true, message: result.message };
 }
 
 // 品項到貨狀態，沿用預購商品既有的 5 階段狀態，用法跟舊的 setArrivalStatus 一樣，

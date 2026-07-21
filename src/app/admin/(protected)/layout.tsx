@@ -45,6 +45,7 @@ const NAV_GROUPS: { label: string | null; items: { href: string; label: string }
       { href: "/admin/announcements", label: "公告管理" },
       { href: "/admin/tags", label: "Tag 管理" },
       { href: "/admin/import", label: "Excel 批量上架" },
+      { href: "/admin/system-health", label: "系統健康度" },
     ],
   },
 ];

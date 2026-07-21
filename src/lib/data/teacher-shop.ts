@@ -167,8 +167,16 @@ export async function getPreorderTeacherSummaries(): Promise<PreorderTeacherSumm
 
   const teacherIds = Array.from(countByTeacher.keys());
   const groupIds = groupRows.map((g) => g.id);
+  // 到達 preorder_ends_at 後，賣場自動不在前台列表顯示（但既有訂單/商品資料不受影響，
+  // 後台跟已存在的訂單歷史都還是照常讀取完整資料，只有這個列表查詢會排除已結束的賣場）。
+  const nowISO = new Date().toISOString();
   const [{ data: teachers }, { data: images }, { data: variants }] = await Promise.all([
-    supabase.from("teachers").select("id, name, avatar_url").in("id", teacherIds).eq("is_active", true),
+    supabase
+      .from("teachers")
+      .select("id, name, avatar_url")
+      .in("id", teacherIds)
+      .eq("is_active", true)
+      .or(`preorder_ends_at.is.null,preorder_ends_at.gte.${nowISO}`),
     supabase
       .from("teacher_images")
       .select("teacher_id, image_url, sort_order")

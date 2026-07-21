@@ -183,13 +183,16 @@ export async function getArtistTeacherSummaries(): Promise<ArtistTeacherSummary[
 
   const teacherIds = Array.from(countByTeacher.keys());
   const groupIds = groupRows.map((g) => g.id);
+  // 到達 preorder_ends_at 後，賣場自動不在前台列表顯示（既有訂單資料不受影響）。
+  const nowISO = new Date().toISOString();
   const [{ data: teachers }, { data: images }, { data: variants }] = await Promise.all([
     supabase
       .from("teachers")
       .select("id, name, avatar_url")
       .in("id", teacherIds)
       .eq("is_active", true)
-      .eq("is_artist_shop", true),
+      .eq("is_artist_shop", true)
+      .or(`preorder_ends_at.is.null,preorder_ends_at.gte.${nowISO}`),
     supabase
       .from("teacher_images")
       .select("teacher_id, image_url, sort_order")

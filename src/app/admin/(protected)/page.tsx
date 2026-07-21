@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getOpsDashboardStats } from "@/lib/data/ops-dashboard";
 import { ClearTestDataButton } from "@/components/admin/ClearTestDataButton";
 
+// 繪師總覽表格的「訂單總額」不在本次移除範圍內（使用者只要求移除營運統計區的今日／本月
+// 金額卡片），保留這個 formatMoney 給那個欄位用。
 function formatMoney(n: number) {
   return `NT$ ${n.toLocaleString("zh-Hant")}`;
 }
@@ -91,16 +93,8 @@ export default async function AdminDashboardPage() {
                     <p className="text-lg font-bold text-purple-600">{f.todayOrders}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-zinc-400">今日訂單金額</p>
-                    <p className="text-lg font-bold text-purple-600">{formatMoney(f.todayAmount)}</p>
-                  </div>
-                  <div>
                     <p className="text-xs text-zinc-400">本月新增訂單數</p>
                     <p className="text-lg font-bold text-purple-600">{f.monthOrders}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-400">本月訂單金額</p>
-                    <p className="text-lg font-bold text-purple-600">{formatMoney(f.monthAmount)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-zinc-400">今日完成訂單數</p>
@@ -109,14 +103,6 @@ export default async function AdminDashboardPage() {
                   <div>
                     <p className="text-xs text-zinc-400">本月完成訂單數</p>
                     <p className="text-lg font-bold text-purple-600">{f.monthCompleted}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-400">未收款總額</p>
-                    <p className="text-lg font-bold text-pink-600">{formatMoney(f.outstandingAmount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-zinc-400">補款／二補待收總額</p>
-                    <p className="text-lg font-bold text-pink-600">{formatMoney(f.pendingSupplementAmount)}</p>
                   </div>
                 </div>
               </div>

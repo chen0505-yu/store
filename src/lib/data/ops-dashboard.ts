@@ -17,13 +17,9 @@ export interface OpsDashboardCards {
 
 export interface VerticalFinanceStats {
   todayOrders: number;
-  todayAmount: number;
   monthOrders: number;
-  monthAmount: number;
   todayCompleted: number; // 今日完成訂單數：以「今日完成的出貨單數」近似，一張出貨單可能合併多筆訂單
   monthCompleted: number;
-  outstandingAmount: number; // 未收款總額：尚未確認匯款訂單的（訂單總額－已匯款金額）加總
-  pendingSupplementAmount: number; // 補款／二補待收總額：狀態為 pending 的補款金額加總
 }
 
 export interface ArtistOverviewRow {
@@ -58,13 +54,9 @@ export interface OpsDashboardStats {
 
 const EMPTY_FINANCE: VerticalFinanceStats = {
   todayOrders: 0,
-  todayAmount: 0,
   monthOrders: 0,
-  monthAmount: 0,
   todayCompleted: 0,
   monthCompleted: 0,
-  outstandingAmount: 0,
-  pendingSupplementAmount: 0,
 };
 
 const EMPTY_STATS: OpsDashboardStats = {
@@ -117,20 +109,18 @@ function countIncomplete(shipments: AdminShipment[]): number {
   return shipments.filter((s) => s.status !== "completed").length;
 }
 
-// 一次查完「今日／本月訂單數與金額」：直接抓 total_amount 欄位而不是先 count 再另外 sum，
-// 一個查詢同時拿到筆數（rows.length）跟金額加總，避免同一個時間區間重複查兩次。
-async function fetchOrdersCountAndAmount(
+// 今日／本月新增訂單數：純計數，不再一併撈金額（營運 Dashboard v2 移除金額類卡片）。
+async function fetchOrdersCount(
   supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   orderType: "preorder" | "artist",
   sinceISO: string
-): Promise<{ count: number; amount: number }> {
-  const { data } = await supabase
+): Promise<number> {
+  const { count } = await supabase
     .from("orders")
-    .select("total_amount")
+    .select("id", { count: "exact", head: true })
     .eq("order_type", orderType)
     .gte("created_at", sinceISO);
-  const rows = data ?? [];
-  return { count: rows.length, amount: rows.reduce((sum, r) => sum + Number(r.total_amount), 0) };
+  return count ?? 0;
 }
 
 async function fetchCompletedShipmentCount(
@@ -145,34 +135,6 @@ async function fetchCompletedShipmentCount(
     .eq("status", "completed")
     .gte("completed_at", sinceISO);
   return count ?? 0;
-}
-
-// 未收款總額：只算還沒確認匯款完成的訂單（not_remitted／pending_confirmation／underpaid），
-// 每筆訂單的未收金額＝訂單總額－已匯款金額（沒匯款資料視為 0），加總後回傳。
-// 只查這個子集合（通常遠小於全部訂單），不是撈全部訂單回來在伺服器端過濾全部資料。
-async function fetchOutstandingAmount(
-  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
-  orderType: "preorder" | "artist"
-): Promise<number> {
-  const { data: orders } = await supabase
-    .from("orders")
-    .select("id, total_amount")
-    .eq("order_type", orderType)
-    .in("payment_status", ["not_remitted", "pending_confirmation", "underpaid"]);
-  const rows = orders ?? [];
-  if (rows.length === 0) return 0;
-
-  const orderIds = rows.map((o) => o.id);
-  const { data: payments } = await supabase
-    .from("payments")
-    .select("order_id, actual_amount")
-    .in("order_id", orderIds);
-  const actualByOrderId = new Map((payments ?? []).map((p) => [p.order_id, Number(p.actual_amount ?? 0)]));
-
-  return rows.reduce((sum, o) => {
-    const actual = actualByOrderId.get(o.id) ?? 0;
-    return sum + Math.max(0, Number(o.total_amount) - actual);
-  }, 0);
 }
 
 export async function getOpsDashboardStats(): Promise<OpsDashboardStats> {
@@ -198,16 +160,14 @@ export async function getOpsDashboardStats(): Promise<OpsDashboardStats> {
     artistGroupsResult,
     artistAccounts,
     pendingSupplementsResult,
-    preorderTodayResult,
-    preorderMonthResult,
-    artistTodayResult,
-    artistMonthResult,
+    preorderTodayCount,
+    preorderMonthCount,
+    artistTodayCount,
+    artistMonthCount,
     preorderTodayCompleted,
     preorderMonthCompleted,
     artistTodayCompleted,
     artistMonthCompleted,
-    preorderOutstanding,
-    artistOutstanding,
   ] = await Promise.all([
     supabase
       .from("orders")
@@ -255,37 +215,16 @@ export async function getOpsDashboardStats(): Promise<OpsDashboardStats> {
     getShipments("artist"),
     supabase.from("artist_product_groups").select("id, teacher_id, arrival_status, is_archived"),
     listArtistAccounts(),
-    supabase.from("supplements").select("order_id, amount").eq("status", "pending"),
-    fetchOrdersCountAndAmount(supabase, "preorder", todayStart),
-    fetchOrdersCountAndAmount(supabase, "preorder", monthStart),
-    fetchOrdersCountAndAmount(supabase, "artist", todayStart),
-    fetchOrdersCountAndAmount(supabase, "artist", monthStart),
+    supabase.from("supplements").select("order_id", { count: "exact", head: true }).eq("status", "pending"),
+    fetchOrdersCount(supabase, "preorder", todayStart),
+    fetchOrdersCount(supabase, "preorder", monthStart),
+    fetchOrdersCount(supabase, "artist", todayStart),
+    fetchOrdersCount(supabase, "artist", monthStart),
     fetchCompletedShipmentCount(supabase, "preorder", todayStart),
     fetchCompletedShipmentCount(supabase, "preorder", monthStart),
     fetchCompletedShipmentCount(supabase, "artist", todayStart),
     fetchCompletedShipmentCount(supabase, "artist", monthStart),
-    fetchOutstandingAmount(supabase, "preorder"),
-    fetchOutstandingAmount(supabase, "artist"),
   ]);
-
-  // 補款／二補待收總額：抓一次全部 pending 補款，再依訂單所屬 order_type 分兩邊加總，
-  // 不用各跑一次查詢（supplements 表本身沒有 order_type 欄位，要反查 orders）。
-  const pendingSupplementRows = pendingSupplementsResult.data ?? [];
-  let preorderPendingSupplementAmount = 0;
-  let artistPendingSupplementAmount = 0;
-  if (pendingSupplementRows.length > 0) {
-    const supplementOrderIds = Array.from(new Set(pendingSupplementRows.map((s) => s.order_id)));
-    const { data: supplementOrders } = await supabase
-      .from("orders")
-      .select("id, order_type")
-      .in("id", supplementOrderIds);
-    const orderTypeById = new Map((supplementOrders ?? []).map((o) => [o.id, o.order_type]));
-    for (const s of pendingSupplementRows) {
-      const type = orderTypeById.get(s.order_id);
-      if (type === "preorder") preorderPendingSupplementAmount += Number(s.amount);
-      else if (type === "artist") artistPendingSupplementAmount += Number(s.amount);
-    }
-  }
 
   const mergeableItems = countMergeable(preorderItems) + countMergeable(artistItems);
   const missingMarketplaceNumber =
@@ -327,7 +266,7 @@ export async function getOpsDashboardStats(): Promise<OpsDashboardStats> {
   const productsWithoutImage = (noImagePreorderResult.count ?? 0) + (noImageArtistResult.count ?? 0);
 
   // 補款或二補尚未完成：全站（葴葴＋繪師）狀態為 pending 的補款筆數。
-  const pendingSupplements = pendingSupplementRows.length;
+  const pendingSupplements = pendingSupplementsResult.count ?? 0;
 
   // 繪師總覽：先算每位繪師「預購中商品數」，再用已經批次查好的 artistItems／artistShipments
   // 依 teacherId／teacherName 分組彙總，避免對每位繪師各自重新查一次資料庫（N+1）。
@@ -401,24 +340,16 @@ export async function getOpsDashboardStats(): Promise<OpsDashboardStats> {
     },
     finance: {
       preorder: {
-        todayOrders: preorderTodayResult.count,
-        todayAmount: preorderTodayResult.amount,
-        monthOrders: preorderMonthResult.count,
-        monthAmount: preorderMonthResult.amount,
+        todayOrders: preorderTodayCount,
+        monthOrders: preorderMonthCount,
         todayCompleted: preorderTodayCompleted,
         monthCompleted: preorderMonthCompleted,
-        outstandingAmount: preorderOutstanding,
-        pendingSupplementAmount: preorderPendingSupplementAmount,
       },
       artist: {
-        todayOrders: artistTodayResult.count,
-        todayAmount: artistTodayResult.amount,
-        monthOrders: artistMonthResult.count,
-        monthAmount: artistMonthResult.amount,
+        todayOrders: artistTodayCount,
+        monthOrders: artistMonthCount,
         todayCompleted: artistTodayCompleted,
         monthCompleted: artistMonthCompleted,
-        outstandingAmount: artistOutstanding,
-        pendingSupplementAmount: artistPendingSupplementAmount,
       },
     },
     artists,

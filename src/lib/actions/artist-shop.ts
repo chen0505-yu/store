@@ -6,6 +6,7 @@ import { requireArtistShopAccess } from "@/lib/artist-context";
 import type { ArrivalStatus } from "@/lib/types";
 import { PREORDER_STATUS_LABEL } from "@/lib/product-status";
 import { mapArrivalStatusToShipmentStatus } from "@/lib/shipment-status";
+import { getGroupDeletePreview, permanentlyDeleteGroup, type GroupDeletePreview } from "@/lib/product-group-delete";
 
 export interface ActionResult {
   success: boolean;
@@ -176,7 +177,54 @@ export async function archiveArtistProductGroup(groupId: string): Promise<Action
   if (error) return { success: false, message: error.message };
 
   revalidateArtistPaths(teacherId);
+  revalidatePath("/admin/archived-products");
   return { success: true, message: "已封存品項" };
+}
+
+export async function restoreArtistProductGroup(groupId: string): Promise<ActionResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const teacherId = await getGroupTeacherId(supabase, groupId);
+  if (!teacherId) return { success: false, message: "找不到這個品項" };
+  const admin = await requireArtistShopAccess(teacherId);
+  if (!admin) return { success: false, message: "沒有權限操作這間商店" };
+
+  const { error } = await supabase.from("artist_product_groups").update({ is_archived: false }).eq("id", groupId);
+  if (error) return { success: false, message: error.message };
+
+  revalidateArtistPaths(teacherId);
+  revalidatePath("/admin/archived-products");
+  return { success: true, message: "已恢復品項" };
+}
+
+export async function getArtistProductGroupDeletePreview(groupId: string): Promise<GroupDeletePreview | null> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return null;
+
+  const teacherId = await getGroupTeacherId(supabase, groupId);
+  if (!teacherId) return null;
+  const admin = await requireArtistShopAccess(teacherId);
+  if (!admin) return null;
+
+  return getGroupDeletePreview(supabase, "artist", groupId);
+}
+
+export async function permanentlyDeleteArtistProductGroup(groupId: string): Promise<ActionResult> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return { success: false, message: "尚未設定 Supabase" };
+
+  const teacherId = await getGroupTeacherId(supabase, groupId);
+  if (!teacherId) return { success: false, message: "找不到這個品項" };
+  const admin = await requireArtistShopAccess(teacherId);
+  if (!admin) return { success: false, message: "沒有權限操作這間商店" };
+
+  const result = await permanentlyDeleteGroup(supabase, "artist", groupId);
+  if (!result.success) return { success: false, message: result.message };
+
+  revalidateArtistPaths(teacherId);
+  revalidatePath("/admin/archived-products");
+  return { success: true, message: result.message };
 }
 
 export async function setArtistGroupArrivalStatus(groupId: string, status: ArrivalStatus): Promise<ActionResult> {
